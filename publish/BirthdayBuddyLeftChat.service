@@ -1,0 +1,17 @@
+[Unit]
+Description=Telegram Bot service
+After=syslog.target network.target
+
+[Service]
+SuccessExitStatus=143
+
+User=root
+
+WorkingDirectory=/root/linux-x64
+ExecStart=/root/publish/BirthdayBuddyLeftChat/BirthdayBuddyLeftChat
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
