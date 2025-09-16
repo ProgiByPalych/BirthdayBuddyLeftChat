@@ -19,7 +19,7 @@ namespace SemenNewsBot
         }
 
         private static readonly string _settingsPath = "Settings.json";
-        public string GetSettingsPath() { return _settingsPath; }
+        public string GetSettingsPath() => _settingsPath;
         /// <summary>
         /// Токен для подключения бота
         /// </summary>
@@ -27,42 +27,51 @@ namespace SemenNewsBot
         /// <summary>
         /// Id владельца бота
         /// </summary>
-        public long RootId { get; set; }
+        public long RootId { get; set; } = 0;
 
+        /// <summary>
+        /// Инициализация настроек из файла
+        /// </summary>
         public static void Init()
         {
             try
             {
-                using (StreamReader reader = new StreamReader(Settings.Instance.GetSettingsPath()))
+                if (!File.Exists(_settingsPath))
                 {
-                    string json = reader.ReadToEnd();
-                    Settings.instance = JsonSerializer.Deserialize<Settings>(json);
-                    Console.WriteLine("Read TokenToAccess: " + Settings.Instance.TokenToAccess);
+                    // Создаём дефолтный файл
+                    Save();
+                    Console.WriteLine($"Файл настроек создан: {_settingsPath}. Заполните его и перезапустите.");
+                    Environment.Exit(1);
                 }
+
+                string json = File.ReadAllText(_settingsPath);
+                var settings = JsonSerializer.Deserialize<Settings>(json);
+
+                if (settings == null)
+                    throw new Exception("Не удалось десериализовать Settings.json");
+
+                instance = settings;
+
+                Console.WriteLine("Настройки загружены: Token=" + (string.IsNullOrEmpty(settings.TokenToAccess) ? "null" : "*****"));
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.ToString());
+                Console.WriteLine($"Ошибка при загрузке настроек: {ex.Message}");
+                Console.WriteLine("Создаю новый файл...");
                 Save();
-            }
-        }
-        public static void Save()
-        {
-            // полная перезапись файла 
-            using (StreamWriter writer = new StreamWriter(Settings.Instance.GetSettingsPath(), false))
-            {
-                writer.WriteLine(JsonSerializer.Serialize(Settings.Instance, typeof(Settings)));
+                Environment.Exit(1);
             }
         }
 
-        public static void Add()
+        /// <summary>
+        /// Сохраняет текущие настройки в файл
+        /// </summary>
+        public static void Save()
         {
-            // добавление в файл
-            using (StreamWriter writer = new StreamWriter(Settings.Instance.GetSettingsPath(), true))
-            {
-                writer.WriteLine("Addition");
-                writer.Write("4,5");
-            }
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            string json = JsonSerializer.Serialize(Instance, options);
+            File.WriteAllText(_settingsPath, json);
+            Console.WriteLine($"Файл настроек сохранён: {_settingsPath}");
         }
     }
 }

@@ -25,7 +25,7 @@ namespace BirthdayBuddyLeftChat.Services
             using var reader = new StringReader(csvContent);
             using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
 
-            var records = await csv.GetRecordsAsync<UserBirthday>();
+            var records = await csv.GetRecordsAsync<UserBirthday>().ToListAsync();
             return records;
         }
     }
