@@ -7,7 +7,7 @@ SuccessExitStatus=143
 
 User=root
 
-WorkingDirectory=/root/linux-x64
+WorkingDirectory=/root/publish/BirthdayBuddyLeftChat/
 ExecStart=/root/publish/BirthdayBuddyLeftChat/BirthdayBuddyLeftChat
 Restart=on-failure
 RestartSec=10
