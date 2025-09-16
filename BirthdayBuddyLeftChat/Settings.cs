@@ -2,6 +2,9 @@
 
 namespace SemenNewsBot
 {
+    /// <summary>
+    /// Глобальные настройки
+    /// </summary>
     public class Settings
     {
         private static Settings? instance;
@@ -17,9 +20,14 @@ namespace SemenNewsBot
 
         private static readonly string _settingsPath = "Settings.json";
         public string GetSettingsPath() { return _settingsPath; }
+        /// <summary>
+        /// Токен для подключения бота
+        /// </summary>
         public string? TokenToAccess { get; set; }
-        public long SemenovChatId { get; set; }
-        public int? SemenovThemeId { get; set; }
+        /// <summary>
+        /// Id владельца бота
+        /// </summary>
+        public long RootId { get; set; }
 
         public static void Init()
         {

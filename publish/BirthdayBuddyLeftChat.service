@@ -1,5 +1,5 @@
 [Unit]
-Description=Telegram Bot service
+Description=BirthdayBuddyLeftChat Bot service
 After=syslog.target network.target
 
 [Service]

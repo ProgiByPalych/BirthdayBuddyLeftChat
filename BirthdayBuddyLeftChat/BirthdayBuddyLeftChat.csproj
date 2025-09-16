@@ -8,15 +8,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="System.ServiceModel.Syndication" Version="9.0.7" />
-		<PackageReference Include="Telegram.Bot" Version="22.6.0" />
+		<PackageReference Include="CsvHelper" Version="33.1.0" />
+		<PackageReference Include="System.ServiceModel.Syndication" Version="9.0.9" />
+		<PackageReference Include="Telegram.Bot" Version="22.7.2" />
 	</ItemGroup>
 
 	<Target Name="PostPublish" AfterTargets="Publish">
-		<Copy SourceFiles="$(ProjectDir)bin\Release\net8.0\Settings.json"
-			DestinationFolder="$(PublishDir)"
-			OverwriteReadOnlyFiles="true"
-			SkipUnchangedFiles="false" />
+		<Copy SourceFiles="$(ProjectDir)bin\Release\net8.0\Settings.json" DestinationFolder="$(PublishDir)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" />
 		<Exec Command="scp -r &quot;$(PublishDir)*&quot; root@telegram.local:/root/publish/BirthdayBuddyLeftChat" />
 		<Exec Command="ssh root@telegram.local &quot;systemctl restart BirthdayBuddyLeftChat.service&quot;" />
 	</Target>
