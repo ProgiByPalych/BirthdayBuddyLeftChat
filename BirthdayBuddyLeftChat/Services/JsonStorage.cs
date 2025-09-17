@@ -1,4 +1,6 @@
-﻿using System.Text.Json;
+﻿using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using BirthdayBuddyLeftChat.Models;
 
 namespace BirthdayBuddyLeftChat.Services
@@ -17,15 +19,26 @@ namespace BirthdayBuddyLeftChat.Services
         {
             if (!File.Exists(path)) return new List<T>();
 
-            var json = await File.ReadAllTextAsync(path);
-            return JsonSerializer.Deserialize<List<T>>(json) ?? new List<T>();
+            var json = await File.ReadAllTextAsync(path, Encoding.UTF8);
+            var options = new JsonSerializerOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // 🔑 Разрешаем кириллицу без \u
+                WriteIndented = true
+            };
+
+            return JsonSerializer.Deserialize<List<T>>(json, options) ?? new List<T>();
         }
 
         public async Task SaveAsync<T>(string path, List<T> data)
         {
-            var options = new JsonSerializerOptions { WriteIndented = true };
+            var options = new JsonSerializerOptions
+            {
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // 🔑 Отключаем экранирование Unicode
+                WriteIndented = true
+            };
+
             var json = JsonSerializer.Serialize(data, options);
-            await File.WriteAllTextAsync(path, json);
+            await File.WriteAllTextAsync(path, json, Encoding.UTF8); // Явно указываем UTF-8
         }
 
         // Удобные методы

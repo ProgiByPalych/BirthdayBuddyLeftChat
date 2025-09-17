@@ -37,30 +37,74 @@ namespace BirthdayBuddyLeftChat.Services
             await _storage.SaveRestrictions(_restrictions);
         }
 
-        public void AddBirthday(long chatId, long userId, string name, DateTime birthDate)
+        public void AddBirthday(long chatId, long? userId, string name, DateTime birthDate)
         {
-            var existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserId == userId);
-            if (existing != null) _birthdays.Remove(existing);
+            if (userId != null)
+            {
+                var existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserId == userId);
+                if (existing != null) _birthdays.Remove(existing);
+            }
+            else
+            {
+                var existing = _birthdays.FirstOrDefault(b => b.Name == name && b.BirthDate == birthDate);
+                if (existing != null) _birthdays.Remove(existing);
+            }
 
             _birthdays.Add(new UserBirthday
             {
                 ChatId = chatId,
-                UserId = userId,
+                UserId = userId ?? 0,
                 Name = name,
                 BirthDate = birthDate,
                 IsActive = true
             });
         }
 
-        public List<UserBirthday> GetBirthdaysToday()
+        public class BirthdayUpcoming
         {
-            var today = DateTime.Today;
-            return _birthdays.Where(b =>
-                b.BirthDate.Month == today.Month &&
-                b.BirthDate.Day == today.Day).ToList();
+            public UserBirthday? Person { get; set; }
+            public DateTime OccursOn { get; set; }
         }
 
-        public string GenerateUpcomingBirthdaysText(long chatId)
+        public List<BirthdayUpcoming> GetBirthdaysWithDate(int daysAhead)
+        {
+            if (daysAhead < 0)
+                throw new ArgumentException("Количество дней должно быть >= 0", nameof(daysAhead));
+
+            var today = DateTime.Today;
+            var results = new List<BirthdayUpcoming>();
+
+            for (int daysOffset = 0; daysOffset <= daysAhead; daysOffset++)
+            {
+                var targetDate = today.AddDays(daysOffset);
+                int month = targetDate.Month;
+                int day = targetDate.Day;
+
+                if (month == 2 && day == 29 && !DateTime.IsLeapYear(targetDate.Year))
+                    day = 28; // коррекция цели
+
+                var matches = _birthdays.Where(b =>
+                {
+                    var bd = b.BirthDate.Date;
+                    if (bd.Month == 2 && bd.Day == 29 && !DateTime.IsLeapYear(targetDate.Year))
+                        return month == 2 && day == 28;
+                    return bd.Month == month && bd.Day == day;
+                });
+
+                foreach (var person in matches)
+                {
+                    results.Add(new BirthdayUpcoming
+                    {
+                        Person = person,
+                        OccursOn = targetDate
+                    });
+                }
+            }
+
+            return results/*.DistinctBy(x => x.Person.UserId)*/.ToList(); // убираем дубли по пользователю
+        }
+
+        public string GenerateUpcomingBirthdaysText(long chatId, int daysAhead)
         {
             var today = DateTime.Today;
             var birthdaysInChat = _birthdays
@@ -76,7 +120,7 @@ namespace BirthdayBuddyLeftChat.Services
                 {
                     var nextBirthday = new DateTime(today.Year, b.BirthDate.Month, b.BirthDate.Day);
                     if (nextBirthday < today) nextBirthday = nextBirthday.AddYears(1);
-                    return (nextBirthday - today).Days <= 30;
+                    return (nextBirthday - today).Days <= daysAhead;
                 })
                 .Select(b =>
                 {
@@ -121,7 +165,7 @@ namespace BirthdayBuddyLeftChat.Services
                 try
                 {
                     await ProcessDailyEvents(botClient, sendMessage);
-                    await SaveDataAsync();
+                    //await SaveDataAsync();
                 }
                 catch (Exception ex)
                 {
@@ -176,47 +220,50 @@ namespace BirthdayBuddyLeftChat.Services
                     Console.WriteLine($"Разблокировка: {ex.Message}");
                 }
             }
-
+            int daysAhead = 30;
             // Дни рождения
-            var birthdays = GetBirthdaysToday();
+            var birthdays = GetBirthdaysWithDate(daysAhead);
             foreach (var p in birthdays)
             {
-                var until = today.AddDays(3);
+                var until = today.AddDays(daysAhead);
 
                 try
                 {
-                    await botClient.RestrictChatMember(
-                        chatId: p.ChatId,
-                        userId: p.UserId,
+                    var age = today.Year - p.Person!.BirthDate.Year;
+                    if (p.Person!.UserId != 0)
+                    {
+                        await botClient.RestrictChatMember(
+                        chatId: p.Person!.ChatId,
+                        userId: p.Person.UserId,
                         permissions: new ChatPermissions
                         {
-                              CanAddWebPagePreviews = false,
-                              CanSendMessages = false,
-                              CanSendOtherMessages = false,
-                              CanChangeInfo = false,
-                              CanInviteUsers = true,
-                              CanManageTopics = false,
-                              CanPinMessages = false,
-                              CanSendAudios = false,
-                              CanSendVideos = false,
-                              CanSendDocuments = false,
-                              CanSendPhotos = false,
-                              CanSendPolls = false,
-                              CanSendVideoNotes = false,
-                              CanSendVoiceNotes = false
+                            CanAddWebPagePreviews = false,
+                            CanSendMessages = false,
+                            CanSendOtherMessages = false,
+                            CanChangeInfo = false,
+                            CanInviteUsers = true,
+                            CanManageTopics = false,
+                            CanPinMessages = false,
+                            CanSendAudios = false,
+                            CanSendVideos = false,
+                            CanSendDocuments = false,
+                            CanSendPhotos = false,
+                            CanSendPolls = false,
+                            CanSendVideoNotes = false,
+                            CanSendVoiceNotes = false
                         },
                         untilDate: DateTime.UtcNow.AddDays(3),
                         cancellationToken: default);
 
-                    _restrictions.Add(new RestrictedUser
-                    {
-                        ChatId = p.ChatId,
-                        UserId = p.UserId,
-                        UnrestrictDate = until
-                    });
-
-                    var age = today.Year - p.BirthDate.Year;
-                    await sendMessage(p.ChatId, $"🤫 {p.Name} временно отключён.\n🎁 Готовим сюрприз?");
+                        _restrictions.Add(new RestrictedUser
+                        {
+                            ChatId = p.Person.ChatId,
+                            UserId = p.Person.UserId,
+                            UnrestrictDate = until
+                        });
+                        await sendMessage(p.Person.ChatId, $"🤫 {p.Person.Name} временно отключён.\n🎁 Готовим сюрприз!");
+                    }
+                    await sendMessage(p.Person.ChatId, $"🤫 {p.Person.Name} скоро День Рождения.\n🎁 Готовим сюрприз!");
                 }
                 catch (Exception ex)
                 {
@@ -230,7 +277,7 @@ namespace BirthdayBuddyLeftChat.Services
             {
                 try
                 {
-                    var text = GenerateUpcomingBirthdaysText(id);
+                    var text = GenerateUpcomingBirthdaysText(id, daysAhead);
                     var msgId = PinnedMessageIds.GetValueOrDefault(id);
 
                     if (msgId.HasValue)
@@ -278,7 +325,7 @@ namespace BirthdayBuddyLeftChat.Services
             var existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserId == userId);
             if (existing != null)
             {
-                existing.Name = name; // Обновляем имя/ник
+                
             }
             else
             {
@@ -290,6 +337,8 @@ namespace BirthdayBuddyLeftChat.Services
                     BirthDate = DateTime.Now, // заглушка
                     IsActive = true
                 });
+
+                SaveDataAsync();
             }
         }
     }
