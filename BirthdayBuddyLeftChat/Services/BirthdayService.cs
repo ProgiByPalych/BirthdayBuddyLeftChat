@@ -1,6 +1,5 @@
 ﻿using BirthdayBuddyLeftChat.Models;
 using SemenNewsBot;
-using System.Collections.Concurrent;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types;
 using Telegram.Bot;
@@ -9,8 +8,18 @@ namespace BirthdayBuddyLeftChat.Services
 {
     public class BirthdayService
     {
+        private static BirthdayService? instance;
+        public static BirthdayService Instance
+        {
+            get
+            {
+                if (instance == null)
+                    instance = new BirthdayService();
+                return instance;
+            }
+        }
+
         private readonly JsonStorage _storage = new();
-        private readonly CsvService _csvService = new();
 
         public List<UserBirthday> _birthdays = new();
         public List<RestrictedUser> _restrictions = new();
@@ -94,10 +103,7 @@ namespace BirthdayBuddyLeftChat.Services
             return string.Join("\n", lines);
         }
 
-        public async Task StartDailyCheck(
-            Func<long, string, Task> sendMessage,
-            ITelegramBotClient botClient,
-            CancellationToken ct)
+        public async Task StartDailyCheck(Func<long, string, Task> sendMessage, ITelegramBotClient botClient, CancellationToken ct)
         {
             await LoadDataAsync();
 
@@ -137,15 +143,25 @@ namespace BirthdayBuddyLeftChat.Services
             {
                 try
                 {
-                    await botClient.RestrictChatMemberAsync(
+                    await botClient.RestrictChatMember(
                         chatId: r.ChatId,
                         userId: r.UserId,
                         permissions: new ChatPermissions
                         {
+                            CanAddWebPagePreviews = true,
                             CanSendMessages = true,
-                            CanSendMediaMessages = true,
                             CanSendOtherMessages = true,
-                            CanAddWebPagePreviews = true
+                            CanChangeInfo = true,
+                            CanInviteUsers = true,
+                            CanManageTopics = true,
+                            CanPinMessages = true,
+                            CanSendAudios = true,
+                            CanSendVideos = true,
+                            CanSendDocuments = true,
+                            CanSendPhotos = true,
+                            CanSendPolls = true,
+                            CanSendVideoNotes = true,
+                            CanSendVoiceNotes = true
                         },
                         cancellationToken: default);
 
@@ -169,15 +185,25 @@ namespace BirthdayBuddyLeftChat.Services
 
                 try
                 {
-                    await botClient.RestrictChatMemberAsync(
+                    await botClient.RestrictChatMember(
                         chatId: p.ChatId,
                         userId: p.UserId,
                         permissions: new ChatPermissions
                         {
-                            CanSendMessages = false,
-                            CanSendMediaMessages = false,
-                            CanSendOtherMessages = false,
-                            CanAddWebPagePreviews = false
+                              CanAddWebPagePreviews = false,
+                              CanSendMessages = false,
+                              CanSendOtherMessages = false,
+                              CanChangeInfo = false,
+                              CanInviteUsers = true,
+                              CanManageTopics = false,
+                              CanPinMessages = false,
+                              CanSendAudios = false,
+                              CanSendVideos = false,
+                              CanSendDocuments = false,
+                              CanSendPhotos = false,
+                              CanSendPolls = false,
+                              CanSendVideoNotes = false,
+                              CanSendVoiceNotes = false
                         },
                         untilDate: DateTime.UtcNow.AddDays(3),
                         cancellationToken: default);
@@ -209,7 +235,7 @@ namespace BirthdayBuddyLeftChat.Services
 
                     if (msgId.HasValue)
                     {
-                        await botClient.EditMessageTextAsync(
+                        await botClient.EditMessageText(
                             chatId: id,
                             messageId: msgId.Value,
                             text: text,
@@ -218,7 +244,7 @@ namespace BirthdayBuddyLeftChat.Services
                     }
                     else
                     {
-                        var msg = await botClient.SendTextMessageAsync(
+                        var msg = await botClient.SendMessage(
                             chatId: id,
                             text: text,
                             parseMode: ParseMode.Markdown,
@@ -226,7 +252,7 @@ namespace BirthdayBuddyLeftChat.Services
 
                         PinnedMessageIds[id] = msg.MessageId;
 
-                        await botClient.PinChatMessageAsync(
+                        await botClient.PinChatMessage(
                             chatId: id,
                             messageId: msg.MessageId,
                             disableNotification: true,
@@ -241,27 +267,29 @@ namespace BirthdayBuddyLeftChat.Services
             }
         }
 
-        public async Task<string> ExportToCsvAsync(long chatId)
+        public void EnsureChatExists(long chatId)
         {
-            var data = _birthdays.Where(b => b.ChatId == chatId).ToList();
-            return await _csvService.ExportToCsvAsync(data);
+            // Просто гарантируем, что чат "известен" — любая операция его создаст
+            // Можно расширить: сохранять название чата, флаг активности и т.п.
         }
 
-        public async Task<bool> ImportFromCsvAsync(string csvContent)
+        public void AddOrUpdateUser(long chatId, long userId, string name)
         {
-            try
+            var existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserId == userId);
+            if (existing != null)
             {
-                var imported = await _csvService.ImportFromCsvAsync(csvContent);
-                foreach (var item in imported)
-                {
-                    AddBirthday(item.ChatId, item.UserId, item.Name, item.BirthDate);
-                }
-                return true;
+                existing.Name = name; // Обновляем имя/ник
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine("Импорт CSV: " + ex.Message);
-                return false;
+                _birthdays.Add(new UserBirthday
+                {
+                    ChatId = chatId,
+                    UserId = userId,
+                    Name = name,
+                    BirthDate = DateTime.Now, // заглушка
+                    IsActive = true
+                });
             }
         }
     }

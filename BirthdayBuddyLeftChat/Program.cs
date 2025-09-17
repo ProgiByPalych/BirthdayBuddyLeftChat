@@ -10,9 +10,6 @@ namespace BirthdayBuddyLeftChat
             // Инициализируем настройки
             Settings.Init();
 
-            var birthdayService = new BirthdayService();
-            var botClient = new BotClient(Settings.Instance.TokenToAccess!, birthdayService);
-
             var cts = new CancellationTokenSource();
             Console.CancelKeyPress += (s, e) =>
             {
@@ -21,15 +18,15 @@ namespace BirthdayBuddyLeftChat
             };
 
             // Загружаем данные
-            await birthdayService.LoadDataAsync();
+            await BirthdayService.Instance.LoadDataAsync();
 
             // Запускаем бота
-            var botTask = botClient.StartAsync(cts.Token);
+            var botTask = BotClient.Instance.StartAsync(cts.Token);
 
             // Запускаем ежедневную проверку
-            await birthdayService.StartDailyCheck(
-                sendMessage: botClient.SendMessageAsync,
-                botClient: botClient._botClient,
+            await BirthdayService.Instance.StartDailyCheck(
+                sendMessage: BotClient.Instance.SendMessageAsync,
+                botClient: BotClient.Instance.botClient!,
                 ct: cts.Token);
 
             await botTask;

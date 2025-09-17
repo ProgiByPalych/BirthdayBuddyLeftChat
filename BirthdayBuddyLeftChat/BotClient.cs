@@ -1,26 +1,36 @@
-﻿using Telegram.Bot.Polling;
-using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types;
+﻿using BirthdayBuddyLeftChat.Services;
+using SemenNewsBot;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
-using BirthdayBuddyLeftChat.Services;
+using Telegram.Bot.Polling;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 
 namespace BirthdayBuddyLeftChat
 {
     public class BotClient
     {
+        private static BotClient? instance;
+        public static BotClient Instance
+        {
+            get
+            {
+                if (instance == null)
+                    instance = new BotClient(Settings.Instance.TokenToAccess!);
+                return instance;
+            }
+        }
+
         // Это клиент для работы с Telegram Bot API, который позволяет отправлять сообщения, управлять ботом, подписываться на обновления и многое другое.
-        private readonly ITelegramBotClient? _botClient;
+        private ITelegramBotClient? _botClient;
+        public ITelegramBotClient? botClient { get { return _botClient; } }
 
         // Это объект с настройками работы бота. Здесь мы будем указывать, какие типы Update мы будем получать, Timeout бота и так далее.
         private static ReceiverOptions? _receiverOptions;
 
-        private readonly BirthdayService? _birthdayService;
-
-        public BotClient(string token, BirthdayService birthdayService)
+        public BotClient(string token)
         {
             _botClient = new TelegramBotClient(token);  // Присваиваем нашей переменной значение, в параметре передаем Token, полученный от BotFather
-            _birthdayService = birthdayService;
         }
 
         public async Task StartAsync(CancellationToken ct)
@@ -38,14 +48,14 @@ namespace BirthdayBuddyLeftChat
             // UpdateHander - обработчик приходящих Update`ов
             // ErrorHandler - обработчик ошибок, связанных с Bot API
             // Запускаем приём обновлений
-            _botClient.StartReceiving(
+            _botClient!.StartReceiving(
                 updateHandler: UpdateHandler,
                 errorHandler: ErrorHandler,
                 receiverOptions: _receiverOptions,
                 cancellationToken: cts.Token
             ); // Запускаем бота
 
-            User me = await _botClient.GetMe(); // Создаем переменную, в которую помещаем информацию о нашем боте.
+            User me = await _botClient!.GetMe(); // Создаем переменную, в которую помещаем информацию о нашем боте.
             Console.WriteLine($"{me.FirstName} запущен!");
 
             // =============== Основной цикл — проверка RSS каждые 10 минут ===============
@@ -66,41 +76,103 @@ namespace BirthdayBuddyLeftChat
             Console.WriteLine($"{me.FirstName} остановлен!");
         }
 
-        private static async Task UpdateHandler(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+        private static async Task UpdateHandler(ITelegramBotClient bot, Update update, CancellationToken ct)
         {
             // Обязательно ставим блок try-catch, чтобы наш бот не "падал" в случае каких-либо ошибок
             try
             {
-                if (update.Message?.Text is not { } messageText)
-                    return;
-
-                var chatId = update.Message.Chat.Id;
-                var message = update.Message.Text;
-
-                switch (message.ToLower())
+                if (update.MyChatMember != null)
                 {
-                    case "/start":
-                        await botClient.SendMessage(chatId, "Привет! Я бот для напоминаний о днях рождениях.");
-                        break;
+                    await Instance.HandleMyChatMemberAsync(bot, update.MyChatMember, ct);
+                    return;
+                }
 
-                    case "/birthdays":
-                        var today = DateTime.Today;
-                        var birthdays = _birthdayService.GetBirthdaysToday();
-                        if (birthdays.Any())
-                        {
-                            var text = "🎉 Сегодня день рождения у:\n" +
-                                       string.Join("\n", birthdays.Select(b => $"{b.Name} — {b.Age} лет"));
-                            await botClient.SendMessage(chatId, text);
-                        }
-                        else
-                        {
-                            await botClient.SendMessage(chatId, "Сегодня никто не празднует день рождения.");
-                        }
-                        break;
+                if (update.Message is not { } message) return;
 
-                    default:
-                        await botClient.SendMessage(chatId, "Я понимаю только команды /start и /birthdays");
-                        break;
+                var chatId = message.Chat.Id;
+                var text = message.Text;
+                var from = message.From!;
+
+                // Формируем имя
+                string name = !string.IsNullOrEmpty(from.Username)
+                    ? $"@{from.Username}"
+                    : $"{from.FirstName}{(string.IsNullOrEmpty(from.LastName) ? "" : $" {from.LastName}")}".Trim();
+
+                // Добавляем в базу, если ещё нет
+                BirthdayService.Instance.AddOrUpdateUser(chatId, from.Id, name);
+
+                if (text?.StartsWith("/start") == true)
+                {
+                    await bot.SendMessage(chatId,
+                        "Привет! Я помогаю следить за днями рождениями.\n" +
+                        "Команды:\n" +
+                        "/addbirthday Имя ГГГГ-ММ-ДД\n" +
+                        "/export — выгрузить список\n" +
+                        "Пришли CSV-файл для импорта",
+                        cancellationToken: ct);
+                    return;
+                }
+
+                if (text?.StartsWith("/addbirthday") == true)
+                {
+                    var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length < 3)
+                    {
+                        await bot.SendMessage(chatId, "Формат: /addbirthday @username|Имя ГГГГ-ММ-ДД", cancellationToken: ct);
+                        return;
+                    }
+
+                    string nameOrUsername = parts[1];
+                    string dateStr = parts[^1]; // последний элемент
+
+                    if (!DateTime.TryParse(dateStr, out var birthDate))
+                    {
+                        await bot.SendMessage(chatId, "❌ Неверный формат даты.", cancellationToken: ct);
+                        return;
+                    }
+
+                    long? userId = null;
+                    string finalName = nameOrUsername;
+
+                    // Если указан @username
+                    if (nameOrUsername.StartsWith("@"))
+                    {
+                        var userInChat = BirthdayService.Instance._birthdays
+                            .FirstOrDefault(b => b.ChatId == chatId && b.Name.Equals(nameOrUsername, StringComparison.OrdinalIgnoreCase));
+
+                        if (userInChat != null)
+                        {
+                            userId = userInChat.UserId;
+                            finalName = userInChat.Name; // например, @ivan или "Иван Петров"
+                        }
+                    }
+
+                    // Если userId не найден — используем текущего отправителя
+                    userId ??= from.Id;
+
+                    BirthdayService.Instance.AddBirthday(chatId, userId.Value, finalName, birthDate);
+                    await BirthdayService.Instance.SaveDataAsync();
+
+                    await bot.SendMessage(chatId, $"✅ День рождения {finalName} добавлен: {birthDate:dd.MM.yyyy}", cancellationToken: ct);
+                }
+
+                if (text?.StartsWith("/scanmembers") == true)
+                {
+                    var knownUsers = BirthdayService.Instance._birthdays
+                        .Where(b => b.ChatId == chatId)
+                        .Select(b => b.Name)
+                        .OrderBy(n => n)
+                        .ToList();
+
+                    if (!knownUsers.Any())
+                    {
+                        await bot.SendMessage(chatId, "Пока нет известных участников.", cancellationToken: ct);
+                    }
+                    else
+                    {
+                        var list = string.Join("\n", knownUsers.Select(u => "• " + u));
+                        await bot.SendMessage(chatId, $"👥 Известные участники:\n{list}", cancellationToken: ct);
+                    }
                 }
             }
             catch (Exception ex)
@@ -131,7 +203,51 @@ namespace BirthdayBuddyLeftChat
 
         public Task SendMessageAsync(long chatId, string message)
         {
-            return _botClient.SendMessage(chatId, message);
+            try
+            {
+                _botClient!.SendMessage(chatId, message, parseMode: ParseMode.Markdown);
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Send failed to {chatId}: {ex.Message}");
+                return Task.CompletedTask;
+            }
+        }
+
+        private async Task HandleMyChatMemberAsync(ITelegramBotClient bot, ChatMemberUpdated chatMemberUpdated, CancellationToken ct)
+        {
+            var chat = chatMemberUpdated.Chat;
+            var newStatus = chatMemberUpdated.NewChatMember.Status;
+
+            // Проверяем, стал ли бот администратором
+            if (newStatus == ChatMemberStatus.Administrator || newStatus == ChatMemberStatus.Creator)
+            {
+                Console.WriteLine($"🤖 Бот добавлен как админ в чат: {chat.Title} (ID: {chat.Id})");
+
+                // Сохраняем чат в список отслеживаемых
+                BirthdayService.Instance.EnsureChatExists(chat.Id);
+
+                // Отправляем приветственное сообщение
+                await bot.SendMessage(
+                    chatId: chat.Id,
+                    text: "🎉 Спасибо, что добавили меня как администратора!\n" +
+                          "Теперь я могу помогать отслеживать дни рождения.\n\n" +
+                          "📌 Я создам закреплённое сообщение с предстоящими ДР.\n" +
+                          "👥 Через пару минут соберу список участников.\n\n" +
+                          "Команды:\n" +
+                          "/addbirthday — добавить день рождения\n" +
+                          "/export — выгрузить CSV",
+                    cancellationToken: ct);
+
+                // Запускаем сбор участников
+                //await BirthdayService.Instance.CollectChatMembersAsync(bot, chat.Id, ct);
+            }
+            else if (newStatus == ChatMemberStatus.Left || newStatus == ChatMemberStatus.Kicked)
+            {
+                Console.WriteLine($"❌ Бот был удалён из чата: {chat.Title} (ID: {chat.Id})");
+                // Можно по желанию очистить данные или оставить
+            }
         }
     }
 }
