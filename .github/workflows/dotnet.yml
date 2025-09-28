@@ -9,7 +9,8 @@ on:
 jobs:
   build:
 
-    runs-on: TelegramBotRunners
+    runs-on:
+      group: TelegramBotRunners
     environment: production
 
     steps:
