@@ -7,7 +7,7 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
-	<Target Name="PostPublish" AfterTargets="Publish">
+	<Target Name="PostPublish" AfterTargets="Publish" Condition="'$(BuildingInsideVisualStudio)' == 'true' AND '$(CI)' != 'true'">
 		<Copy SourceFiles="$(ProjectDir)bin\Release\net8.0\Settings.json" DestinationFolder="$(PublishDir)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" />
 		<Exec Command="scp -r &quot;$(PublishDir)*&quot; root@telegram.local:/root/publish/BirthdayBuddyLeftChat" />
 		<Exec Command="ssh root@telegram.local &quot;systemctl restart BirthdayBuddyLeftChat.service&quot;" />
