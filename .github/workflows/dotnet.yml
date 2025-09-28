@@ -14,19 +14,19 @@ jobs:
     environment: production
 
     steps:
-      - name: Шаг 1: Клонируем репозиторий
+      - name: Шаг 1 - Клонируем репозиторий
         uses: actions/checkout@v4
         # → После этого все файлы есть в рабочей директории (Runner создаёт временную рабочую папку /home/runner/actions-runner/_work/BirthdayBuddyLeftChat/BirthdayBuddyLeftChat)
 
-      - name: Шаг 2: Проверка установки .NET и его обновление
+      - name: Шаг 2 - Проверка установки .NET и его обновление
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Шаг 3: Восстанавливаем зависимости
+      - name: Шаг 3 - Восстанавливаем зависимости
         run: cd BirthdayBuddyLeftChat & dotnet restore
 
-      - name: Шаг 4: Собираем и публикуем
+      - name: Шаг 4 - Собираем и публикуем
         run: |
           dotnet publish \
           --configuration Release \
@@ -34,16 +34,16 @@ jobs:
           --nologo \
           --verbosity minimalse
 
-      - name: Шаг 5: Копирование настроек
+      - name: Шаг 5 - Копирование настроек
         run: #cp Settings.json ./publish/ || echo "Warning: Settings.json не найден!"
 
-      - name: Шаг 6: Отправка на сервер
+      - name: Шаг 6 - Отправка на сервер
         run: |
           # Отправляем на сервер
           # scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r ./publish/* root@telegram.local:/root/publish/BirthdayBuddyLeftChat/
 
-      - name: Шаг 7: Перезапуск сервиса
+      - name: Шаг 7 - Перезапуск сервиса
         run: systemctl restart BirthdayBuddyLeftChat.service
 
-      - name: Шаг 8: Проверка статуса сервиса
+      - name: Шаг 8 - Проверка статуса сервиса
         run: systemctl status BirthdayBuddyLeftChat.service --no-pager
