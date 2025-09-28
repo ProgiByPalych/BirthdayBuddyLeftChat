@@ -1,7 +1,4 @@
-# This workflow will build a .NET project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
-
-name: .NET
+name: Build and Deploy BirthdayBuddyLeftChatBot
 
 on:
   push:
@@ -13,6 +10,7 @@ jobs:
   build:
 
     runs-on: TelegramBotRunners
+    environment: production
 
     steps:
       # 🔁 Шаг 1: Клонируем репозиторий
@@ -41,7 +39,7 @@ jobs:
 
       # 📁 Шаг 5: Копируем Settings.json (если не скопировался автоматически)
       - name: Копирование настроек
-        run: cp Settings.json ./publish/ || echo "Warning: Settings.json не найден!"
+        run: #cp Settings.json ./publish/ || echo "Warning: Settings.json не найден!"
 
       # 🚀 Шаг 6: Деплой на целевой сервер
       - name: Отправка на сервер
