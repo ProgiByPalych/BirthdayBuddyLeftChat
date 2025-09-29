@@ -11,22 +11,21 @@ jobs:
 
     runs-on:
       group: TelegramBotRunners
-    environment: production
 
     steps:
-      - name: Шаг 1 - Клонируем репозиторий
+      - name: Шаг 1 - Клонирование репозитория
         uses: actions/checkout@v4
-        # → После этого все файлы есть в рабочей директории (Runner создаёт временную рабочую папку /home/runner/actions-runner/_work/BirthdayBuddyLeftChat/BirthdayBuddyLeftChat)
+        #После этого все файлы есть в рабочей директории (Runner создаёт временную рабочую папку /home/runner/actions-runner/_work/BirthdayBuddyLeftChat/BirthdayBuddyLeftChat)
 
       - name: Шаг 2 - Проверка установки .NET и его обновление
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Шаг 3 - Восстанавливаем зависимости
+      - name: Шаг 3 - Восстанавление зависимостей
         run: cd BirthdayBuddyLeftChat & dotnet restore
 
-      - name: Шаг 4 - Собираем и публикуем
+      - name: Шаг 4 - Соборка и публикация
         run: |
           dotnet publish \
           --configuration Release \
