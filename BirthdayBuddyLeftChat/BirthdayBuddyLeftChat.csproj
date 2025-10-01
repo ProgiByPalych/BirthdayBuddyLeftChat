@@ -7,7 +7,7 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
-	<Target Name="PostPublish" AfterTargets="Publish">
+	<Target Name="PostPublish" AfterTargets="Publish" Condition="'$(BuildingInsideVisualStudio)' == 'true' AND '$(CI)' != 'true'">
 		<!-- Останавливаем службу -->
 		<Exec Command="ssh root@telegram.local &quot;systemctl stop BirthdayBuddyLeftChat.service&quot;" />
 		
@@ -21,6 +21,7 @@
 
 		<!-- Запускаем службу -->
 		<Exec Command="ssh root@telegram.local &quot;systemctl start BirthdayBuddyLeftChat.service&quot;" />
+		<Exec Command="ssh root@telegram.local &quot;systemctl status BirthdayBuddyLeftChat.service --no-pager&quot;" />
 	</Target>
 
 	<ItemGroup>

@@ -1,0 +1,48 @@
+name: Build and Deploy BirthdayBuddyLeftChatBot
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on:
+      group: TelegramBotRunners
+
+    steps:
+      - name: Шаг 1 - Клонирование репозитория
+        uses: actions/checkout@v4
+        #После этого все файлы есть в рабочей директории (Runner создаёт временную рабочую папку /home/runner/actions-runner/_work/BirthdayBuddyLeftChat/BirthdayBuddyLeftChat)
+
+      - name: Шаг 2 - Проверка установки .NET и его обновление
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Шаг 3 - Восстанавление зависимостей
+        run: cd BirthdayBuddyLeftChat & dotnet restore
+
+      - name: Шаг 4 - Соборка и публикация
+        run: |
+          dotnet publish \
+          --configuration Release \
+          --output ./publish \
+          --nologo \
+          --verbosity minimalse
+
+      - name: Шаг 5 - Копирование настроек
+        run: #cp Settings.json ./publish/ || echo "Warning: Settings.json не найден!"
+
+      - name: Шаг 6 - Отправка на сервер
+        run: |
+          # Отправляем на сервер
+          # scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r ./publish/* root@telegram.local:/root/publish/BirthdayBuddyLeftChat/
+
+      - name: Шаг 7 - Перезапуск сервиса
+        run: systemctl restart BirthdayBuddyLeftChat.service
+
+      - name: Шаг 8 - Проверка статуса сервиса
+        run: systemctl status BirthdayBuddyLeftChat.service --no-pager
