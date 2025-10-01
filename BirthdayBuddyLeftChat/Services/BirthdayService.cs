@@ -37,27 +37,20 @@ namespace BirthdayBuddyLeftChat.Services
             await _storage.SaveRestrictions(_restrictions);
         }
 
-        public void AddBirthday(long chatId, long? userId, string name, DateTime birthDate)
+        public void AddBirthday(UserBirthday user)
         {
-            if (userId != null)
+            if (user.UserId != 0)
             {
-                var existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserId == userId);
+                var existing = _birthdays.FirstOrDefault(b => b.ChatId == user.ChatId && b.UserId == user.UserId);
                 if (existing != null) _birthdays.Remove(existing);
             }
             else
             {
-                var existing = _birthdays.FirstOrDefault(b => b.Name == name && b.BirthDate == birthDate);
+                var existing = _birthdays.FirstOrDefault(b => b.GetFullName() == user.GetFullName() && b.BirthDate == user.BirthDate);
                 if (existing != null) _birthdays.Remove(existing);
             }
 
-            _birthdays.Add(new UserBirthday
-            {
-                ChatId = chatId,
-                UserId = userId ?? 0,
-                Name = name,
-                BirthDate = birthDate,
-                IsActive = true
-            });
+            _birthdays.Add(user);
         }
 
         public class BirthdayUpcoming
@@ -128,7 +121,7 @@ namespace BirthdayBuddyLeftChat.Services
                     if (next < today) next = next.AddYears(1);
                     var daysLeft = (next - today).Days;
                     var age = next.Year - b.BirthDate.Year;
-                    return $"{b.Name} — {next:dd.MM} ({(daysLeft == 0 ? "сегодня" : $"{daysLeft} дн.")}), {age} лет";
+                    return $"{b.GetFullName()} — {next:dd.MM} ({(daysLeft == 0 ? "сегодня" : $"{daysLeft} дн.")}), {age} лет";
                 })
                 .ToList();
 
@@ -182,94 +175,92 @@ namespace BirthdayBuddyLeftChat.Services
             var today = DateTime.Today;
 
             // Разблокировка
-            var toUnrestrict = _restrictions.Where(r => r.UnrestrictDate <= today).ToList();
-            foreach (var r in toUnrestrict)
-            {
-                try
-                {
-                    await botClient.RestrictChatMember(
-                        chatId: r.ChatId,
-                        userId: r.UserId,
-                        permissions: new ChatPermissions
-                        {
-                            CanAddWebPagePreviews = true,
-                            CanSendMessages = true,
-                            CanSendOtherMessages = true,
-                            CanChangeInfo = true,
-                            CanInviteUsers = true,
-                            CanManageTopics = true,
-                            CanPinMessages = true,
-                            CanSendAudios = true,
-                            CanSendVideos = true,
-                            CanSendDocuments = true,
-                            CanSendPhotos = true,
-                            CanSendPolls = true,
-                            CanSendVideoNotes = true,
-                            CanSendVoiceNotes = true
-                        },
-                        cancellationToken: default);
+            //var toUnrestrict = _restrictions.Where(r => r.UnrestrictDate <= today).ToList();
+            //foreach (var r in toUnrestrict)
+            //{
+            //    try
+            //    {
+            //        await botClient.RestrictChatMember(
+            //            chatId: r.User.ChatId,
+            //            userId: r.User.UserId,
+            //            permissions: new ChatPermissions
+            //            {
+            //                CanAddWebPagePreviews = true,
+            //                CanSendMessages = true,
+            //                CanSendOtherMessages = true,
+            //                CanChangeInfo = true,
+            //                CanInviteUsers = true,
+            //                CanManageTopics = true,
+            //                CanPinMessages = true,
+            //                CanSendAudios = true,
+            //                CanSendVideos = true,
+            //                CanSendDocuments = true,
+            //                CanSendPhotos = true,
+            //                CanSendPolls = true,
+            //                CanSendVideoNotes = true,
+            //                CanSendVoiceNotes = true
+            //            },
+            //            cancellationToken: default);
 
-                    var user = _birthdays.FirstOrDefault(u => u.ChatId == r.ChatId && u.UserId == r.UserId);
-                    if (user != null) user.IsActive = true;
+            //        var user = _birthdays.FirstOrDefault(u => u.ChatId == r.User.ChatId && u.UserId == r.User.UserId);
+            //        if (user != null) user.IsActive = true;
 
-                    _restrictions.Remove(r);
-                    await sendMessage(r.ChatId, $"🎉 {user?.Name} снова может писать!");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Разблокировка: {ex.Message}");
-                }
-            }
-            int daysAhead = 30;
+            //        _restrictions.Remove(r);
+            //        await sendMessage(r.User.ChatId, $"🎉 {user?.GetFullName()} снова может писать!");
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        Console.WriteLine($"Разблокировка: {ex.Message}");
+            //    }
+            //}
+            int daysAhead = 15;
             // Дни рождения
             var birthdays = GetBirthdaysWithDate(daysAhead);
-            foreach (var p in birthdays)
-            {
-                var until = today.AddDays(daysAhead);
+            //foreach (var p in birthdays)
+            //{
+            //    var until = today.AddDays(daysAhead);
 
-                try
-                {
-                    var age = today.Year - p.Person!.BirthDate.Year;
-                    if (p.Person!.UserId != 0)
-                    {
-                        await botClient.RestrictChatMember(
-                        chatId: p.Person!.ChatId,
-                        userId: p.Person.UserId,
-                        permissions: new ChatPermissions
-                        {
-                            CanAddWebPagePreviews = false,
-                            CanSendMessages = false,
-                            CanSendOtherMessages = false,
-                            CanChangeInfo = false,
-                            CanInviteUsers = true,
-                            CanManageTopics = false,
-                            CanPinMessages = false,
-                            CanSendAudios = false,
-                            CanSendVideos = false,
-                            CanSendDocuments = false,
-                            CanSendPhotos = false,
-                            CanSendPolls = false,
-                            CanSendVideoNotes = false,
-                            CanSendVoiceNotes = false
-                        },
-                        untilDate: DateTime.UtcNow.AddDays(3),
-                        cancellationToken: default);
+            //    try
+            //    {
+            //        if (p.Person!.UserId != 0)
+            //        {
+            //            await botClient.RestrictChatMember(
+            //            chatId: p.Person!.ChatId,
+            //            userId: p.Person.UserId,
+            //            permissions: new ChatPermissions
+            //            {
+            //                CanAddWebPagePreviews = false,
+            //                CanSendMessages = false,
+            //                CanSendOtherMessages = false,
+            //                CanChangeInfo = false,
+            //                CanInviteUsers = true,
+            //                CanManageTopics = false,
+            //                CanPinMessages = false,
+            //                CanSendAudios = false,
+            //                CanSendVideos = false,
+            //                CanSendDocuments = false,
+            //                CanSendPhotos = false,
+            //                CanSendPolls = false,
+            //                CanSendVideoNotes = false,
+            //                CanSendVoiceNotes = false
+            //            },
+            //            untilDate: DateTime.UtcNow.AddDays(3),
+            //            cancellationToken: default);
 
-                        _restrictions.Add(new RestrictedUser
-                        {
-                            ChatId = p.Person.ChatId,
-                            UserId = p.Person.UserId,
-                            UnrestrictDate = until
-                        });
-                        await sendMessage(p.Person.ChatId, $"🤫 {p.Person.Name} временно отключён.\n🎁 Готовим сюрприз!");
-                    }
-                    await sendMessage(p.Person.ChatId, $"🤫 {p.Person.Name} скоро День Рождения.\n🎁 Готовим сюрприз!");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Ограничение: {ex.Message}");
-                }
-            }
+            //            _restrictions.Add(new RestrictedUser
+            //            {
+            //                User = p.Person!,
+            //                UnrestrictDate = until
+            //            });
+            //            await sendMessage(p.Person.ChatId, $"🤫 {p.Person.Name} временно отключён.\n🎁 Готовим сюрприз!");
+            //        }
+            //        await sendMessage(p.Person!.ChatId, $"🤫 {p.Person.GetFullName()} скоро День Рождения.\n🎁 Готовим сюрприз!");
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        Console.WriteLine($"Ограничение: {ex.Message}");
+            //    }
+            //}
 
             // Обновление шапки
             var chatIds = _birthdays.Select(b => b.ChatId).Distinct();
@@ -320,25 +311,27 @@ namespace BirthdayBuddyLeftChat.Services
             // Можно расширить: сохранять название чата, флаг активности и т.п.
         }
 
-        public void AddOrUpdateUser(long chatId, long userId, string name)
+        public void AddOrUpdateUser(long chatId, string firstName, DateTime birthDate, long userId = 0, string userName = "", string lastName = "", string patronymic = "", bool isActive = true)
         {
+            UserBirthday user = new UserBirthday
+            {
+                ChatId = chatId,
+                UserId = userId,
+                UserName = userName,
+                LastName = lastName,
+                FirstName = firstName,
+                Patronymic = patronymic,
+                BirthDate = birthDate,
+                IsActive = isActive
+            };
             var existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserId == userId);
-            if (existing != null)
-            {
-                
-            }
-            else
-            {
-                _birthdays.Add(new UserBirthday
-                {
-                    ChatId = chatId,
-                    UserId = userId,
-                    Name = name,
-                    BirthDate = DateTime.Now, // заглушка
-                    IsActive = true
-                });
+            if (existing == null) existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.GetFullName() == user.GetFullName());
 
-                SaveDataAsync();
+            if (existing == null)
+            {
+                _birthdays.Add(user);
+
+                _ = SaveDataAsync();
             }
         }
     }

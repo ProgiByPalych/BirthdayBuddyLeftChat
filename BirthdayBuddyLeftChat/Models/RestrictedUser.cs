@@ -2,8 +2,7 @@
 {
     public class RestrictedUser
     {
-        public long ChatId { get; set; }
-        public long UserId { get; set; }
+        public required UserBirthday User { get; set; }
         public DateTime UnrestrictDate { get; set; }
     }
 }

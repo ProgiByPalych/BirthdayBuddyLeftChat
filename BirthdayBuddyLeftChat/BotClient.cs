@@ -1,5 +1,7 @@
-﻿using BirthdayBuddyLeftChat.Services;
+﻿using BirthdayBuddyLeftChat.Models;
+using BirthdayBuddyLeftChat.Services;
 using SemenNewsBot;
+using System.Globalization;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -93,21 +95,24 @@ namespace BirthdayBuddyLeftChat
                 var text = message.Text;
                 var from = message.From!;
 
-                // Формируем имя
-                string name = !string.IsNullOrEmpty(from.Username) ?
-                    $"{(string.IsNullOrEmpty(from.LastName) ? "" : $"{from.LastName} ")}{from.FirstName}".Trim() + $" @{from.Username}" :
-                    $"{(string.IsNullOrEmpty(from.LastName) ? "" : $"{from.LastName} ")}{from.FirstName}".Trim();
-
                 // Добавляем в базу, если ещё нет
-                BirthdayService.Instance.AddOrUpdateUser(chatId, from.Id, name);
+                if(!from.IsBot)
+                BirthdayService.Instance.AddOrUpdateUser(
+                    chatId: chatId, 
+                    firstName: string.IsNullOrEmpty(from.FirstName) ? "" : $"{from.FirstName}",
+                    birthDate: DateTime.Now,
+                    userId: from.Id,
+                    userName: from.Username!,
+                    lastName: from.LastName!
+                    );
 
                 if (text?.StartsWith("/start") == true)
                 {
                     await bot.SendMessage(chatId,
                         "Привет! Я помогаю следить за днями рождениями.\n" +
                         "Команды:\n" +
-                        "/addbirthday ФИО,ДД.ММ.ГГГГ\n" +
-                        "ФИО2,ДД.ММ.ГГГГ . . . и т.д.\n" +
+                        "/addbirthday ФИО@UserName,ДД.ММ.ГГГГ\n" +
+                        "ФИО@UserName2,ДД.ММ.ГГГГ . . . и т.д.\n" +
                         "/list - вывести список именинников",
                         cancellationToken: ct);
                     return;
@@ -123,62 +128,60 @@ namespace BirthdayBuddyLeftChat
                         var parts = item.Split(',', StringSplitOptions.RemoveEmptyEntries);
                         if (parts.Length != 2)
                         {
-                            await bot.SendMessage(chatId, $"❌ Формат: /addbirthday ФИО,ДД.ММ.ГГГГ\n{item}", cancellationToken: ct);
+                            await bot.SendMessage(chatId, $"❌ Формат: /addbirthday ФИО@UserName,ДД.ММ.ГГГГ\n{item}", cancellationToken: ct);
                             continue;
                         }
 
                         string nameOrUsername = parts[0];
                         string dateStr = parts[1];
 
-                        if (!DateTime.TryParse(dateStr, out var birthDate))
+                        if (!DateTime.TryParseExact(dateStr, "dd.MM.yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var birthDate))
                         {
                             await bot.SendMessage(chatId, $"❌ Неверный формат даты.\n{item}", cancellationToken: ct);
                             continue;
                         }
 
-                        long? userId = null;
-                        string finalName = nameOrUsername;
+                        UserBirthday user = new UserBirthday();
+                        user.ChatId = chatId;
 
                         // Если указан @username
-                        if (nameOrUsername.StartsWith("@"))
+                        if (nameOrUsername.Contains('@'))
                         {
                             var userInChat = BirthdayService.Instance._birthdays
-                                .FirstOrDefault(b => b.ChatId == chatId && b.Name.Equals(nameOrUsername, StringComparison.OrdinalIgnoreCase));
+                                .FirstOrDefault(b => b.ChatId == chatId && b.UserName.Equals(nameOrUsername.Split('@').Last(), StringComparison.OrdinalIgnoreCase));
 
                             if (userInChat != null)
                             {
-                                userId = userInChat.UserId;
-                                finalName = userInChat.Name; // например, @ivan или "Иван Петров"
+                                user = userInChat;
                             }
+                            nameOrUsername = nameOrUsername.Split('@').First();
                         }
 
-                        // Если userId не найден — используем текущего отправителя
-                        //userId ??= from.Id;
+                        user.BirthDate = birthDate;
 
-                        BirthdayService.Instance.AddBirthday(chatId, userId, finalName, birthDate);
+                        var nameParts = nameOrUsername.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (nameParts.Length == 0) { await bot.SendMessage(chatId, $"❌ ФИО не распознано.\n{nameOrUsername}", cancellationToken: ct); continue; }
+                        if (nameParts.Length == 1) user.FirstName = nameParts.First();
+                        if (nameParts.Length == 2) { user.LastName = nameParts.First(); user.FirstName = nameParts.Last(); }
+                        if (nameParts.Length >= 3) { user.LastName = nameParts[0]; user.FirstName = nameParts[1]; user.Patronymic = nameParts[2]; }
 
-                        await bot.SendMessage(chatId, $"✅ День рождения {finalName} добавлен: {birthDate:dd.MM.yyyy}", cancellationToken: ct);
+                        BirthdayService.Instance.AddBirthday(user);
+
+                        await bot.SendMessage(chatId, $"✅ День рождения {user.GetFullName()} добавлен: {user.BirthDate:dd.MM.yyyy}", cancellationToken: ct);
                     }
                     await BirthdayService.Instance.SaveDataAsync();
                 }
 
-                if (text?.StartsWith("/scanmembers") == true)
+                if (text?.StartsWith("/list") == true)
                 {
-                    var knownUsers = BirthdayService.Instance._birthdays
-                        .Where(b => b.ChatId == chatId)
-                        .Select(b => b.Name)
-                        .OrderBy(n => n)
-                        .ToList();
-
-                    if (!knownUsers.Any())
+                    string list = "";
+                    foreach (UserBirthday user in BirthdayService.Instance._birthdays)
                     {
-                        await bot.SendMessage(chatId, "Пока нет известных участников.", cancellationToken: ct);
+                        if (user.ChatId == chatId)
+                            list += $"{user.GetFullName()} {user.BirthDate:dd.MM.yyyy} ({user.GetAge()})\n";
                     }
-                    else
-                    {
-                        var list = string.Join("\n", knownUsers.Select(u => "• " + u));
-                        await bot.SendMessage(chatId, $"👥 Известные участники:\n{list}", cancellationToken: ct);
-                    }
+                    
+                    await bot.SendMessage(chatId, $"👥 Известные участники:\n{list}", cancellationToken: ct);
                 }
             }
             catch (Exception ex)

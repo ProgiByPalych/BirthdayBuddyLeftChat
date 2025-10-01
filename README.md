@@ -61,3 +61,29 @@ systemctl daemon-reload
 Создаем папку ```/root/publish/BirthdayBuddyLeftChat```
 
 Ну и собственно можно сделать **Publish**
+
+## Настройка даты на сервере
+
+Подробную дату и часовой пояс можно узнать так:
+
+```bash
+timedatectl
+```
+
+Пример вывода:
+
+```bash
+               Local time: Пн 2025-05-20 15:47:32 MSK
+           Universal time: Пн 2025-05-20 12:47:32 UTC
+                 RTC time: Пн 2025-05-20 12:47:32
+                Time zone: Europe/Moscow (MSK, +0300)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+```
+
+Если все не то - устанавливаем часовой пояс:
+
+```bash
+timedatectl set-timezone Europe/Moscow
+```
