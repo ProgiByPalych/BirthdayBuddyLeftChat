@@ -96,15 +96,15 @@ namespace BirthdayBuddyLeftChat
                 var from = message.From!;
 
                 // Добавляем в базу, если ещё нет
-                if(!from.IsBot)
-                BirthdayService.Instance.AddOrUpdateUser(
-                    chatId: chatId, 
-                    firstName: string.IsNullOrEmpty(from.FirstName) ? "" : $"{from.FirstName}",
-                    birthDate: DateTime.Now,
-                    userId: from.Id,
-                    userName: from.Username!,
-                    lastName: from.LastName!
-                    );
+                //if(!from.IsBot)
+                //BirthdayService.Instance.AddOrUpdateUser(
+                //    chatId: chatId, 
+                //    firstName: string.IsNullOrEmpty(from.FirstName) ? "" : $"{from.FirstName}",
+                //    birthDate: DateTime.Now,
+                //    userId: from.Id,
+                //    userName: from.Username!,
+                //    lastName: from.LastName!
+                //    );
 
                 if (text?.StartsWith("/start") == true)
                 {
