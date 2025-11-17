@@ -12,10 +12,7 @@
 		<Exec Command="ssh root@telegram.local &quot;systemctl stop BirthdayBuddyLeftChat.service&quot;" />
 		
 		<!-- Копируем Settings.json в папку публикации -->
-		<Copy SourceFiles="$(ProjectDir)bin\$(Configuration)\net8.0\Settings.json"
-			  DestinationFolder="$(PublishDir)"
-			  OverwriteReadOnlyFiles="true" 
-			  SkipUnchangedFiles="false" />
+		<Copy SourceFiles="$(ProjectDir)bin\$(Configuration)\net8.0\Settings.json" DestinationFolder="$(PublishDir)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" />
 		<!-- Копируем всю публикацию на сервер -->
 		<Exec Command="scp -r &quot;$(PublishDir)*&quot; root@telegram.local:/root/publish/BirthdayBuddyLeftChat" />
 
@@ -25,7 +22,7 @@
 	</Target>
 
 	<ItemGroup>
-	  <PackageReference Include="Telegram.Bot" Version="22.7.2" />
+	  <PackageReference Include="Telegram.Bot" Version="22.7.5" />
 	</ItemGroup>
 
 </Project>
