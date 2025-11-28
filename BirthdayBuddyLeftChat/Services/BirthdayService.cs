@@ -1,157 +1,40 @@
-﻿using BirthdayBuddyLeftChat.Models;
-using SemenNewsBot;
-using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types;
+﻿using Telegram.Bot.Types.Enums;
 using Telegram.Bot;
 
 namespace BirthdayBuddyLeftChat.Services
 {
     public class BirthdayService
     {
-        private static BirthdayService? instance;
+        private static BirthdayService? _instance;
         public static BirthdayService Instance
         {
             get
             {
-                if (instance == null)
-                    instance = new BirthdayService();
-                return instance;
+                if (_instance == null)
+                    _instance = new BirthdayService();
+                return _instance;
             }
-        }
-
-        private readonly JsonStorage _storage = new();
-
-        public List<UserBirthday> _birthdays = new();
-        public List<RestrictedUser> _restrictions = new();
-        public Dictionary<long, int?> PinnedMessageIds { get; } = new();
-
-        public async Task LoadDataAsync()
-        {
-            _birthdays = await _storage.LoadBirthdays();
-            _restrictions = await _storage.LoadRestrictions();
-        }
-
-        public async Task SaveDataAsync()
-        {
-            await _storage.SaveBirthdays(_birthdays);
-            await _storage.SaveRestrictions(_restrictions);
-        }
-
-        public void AddBirthday(UserBirthday user)
-        {
-            if (user.UserId != 0)
-            {
-                var existing = _birthdays.FirstOrDefault(b => b.ChatId == user.ChatId && b.UserId == user.UserId);
-                if (existing != null) _birthdays.Remove(existing);
-            }
-            else
-            {
-                var existing = _birthdays.FirstOrDefault(b => b.GetFullName() == user.GetFullName() && b.BirthDate == user.BirthDate);
-                if (existing != null) _birthdays.Remove(existing);
-            }
-
-            _birthdays.Add(user);
-        }
-
-        public class BirthdayUpcoming
-        {
-            public UserBirthday? Person { get; set; }
-            public DateTime OccursOn { get; set; }
-        }
-
-        public List<BirthdayUpcoming> GetBirthdaysWithDate(int daysAhead)
-        {
-            if (daysAhead < 0)
-                throw new ArgumentException("Количество дней должно быть >= 0", nameof(daysAhead));
-
-            var today = DateTime.Today;
-            var results = new List<BirthdayUpcoming>();
-
-            for (int daysOffset = 0; daysOffset <= daysAhead; daysOffset++)
-            {
-                var targetDate = today.AddDays(daysOffset);
-                int month = targetDate.Month;
-                int day = targetDate.Day;
-
-                if (month == 2 && day == 29 && !DateTime.IsLeapYear(targetDate.Year))
-                    day = 28; // коррекция цели
-
-                var matches = _birthdays.Where(b =>
-                {
-                    var bd = b.BirthDate.Date;
-                    if (bd.Month == 2 && bd.Day == 29 && !DateTime.IsLeapYear(targetDate.Year))
-                        return month == 2 && day == 28;
-                    return bd.Month == month && bd.Day == day;
-                });
-
-                foreach (var person in matches)
-                {
-                    results.Add(new BirthdayUpcoming
-                    {
-                        Person = person,
-                        OccursOn = targetDate
-                    });
-                }
-            }
-
-            return results/*.DistinctBy(x => x.Person.UserId)*/.ToList(); // убираем дубли по пользователю
-        }
-
-        public string GenerateUpcomingBirthdaysText(long chatId, int daysAhead)
-        {
-            var today = DateTime.Today;
-            var birthdaysInChat = _birthdays
-                .Where(b => b.ChatId == chatId)
-                .OrderBy(b => (b.BirthDate.Month - 1) * 31 + b.BirthDate.Day)
-                .ToList();
-
-            var lines = new List<string> { "🎂 **Предстоящие дни рождения**" };
-            lines.Add("———");
-
-            var upcoming = birthdaysInChat
-                .Where(b =>
-                {
-                    var nextBirthday = new DateTime(today.Year, b.BirthDate.Month, b.BirthDate.Day);
-                    if (nextBirthday < today) nextBirthday = nextBirthday.AddYears(1);
-                    return (nextBirthday - today).Days <= daysAhead;
-                })
-                .Select(b =>
-                {
-                    var next = new DateTime(today.Year, b.BirthDate.Month, b.BirthDate.Day);
-                    if (next < today) next = next.AddYears(1);
-                    var daysLeft = (next - today).Days;
-                    var age = next.Year - b.BirthDate.Year;
-                    return $"{b.GetFullName()} — {next:dd.MM} ({(daysLeft == 0 ? "сегодня" : $"{daysLeft} дн.")}), {age} лет";
-                })
-                .ToList();
-
-            if (upcoming.Any())
-            {
-                lines.AddRange(upcoming);
-            }
-            else
-            {
-                lines.Add("🎉 В ближайшее время нет дней рождений.");
-            }
-
-            lines.Add("———");
-            lines.Add("_Обновлено автоматически_");
-
-            return string.Join("\n", lines);
         }
 
         public async Task StartDailyCheck(Func<long, string, Task> sendMessage, ITelegramBotClient botClient, CancellationToken ct)
         {
-            await LoadDataAsync();
-
-            var now = DateTime.Now;
-            var nextRun = now.Date.AddDays(1).AddHours(9); // 9:00
-            if (now > nextRun) nextRun = nextRun.AddDays(1);
-
-            var delay = nextRun - now;
+            // Загружаем данные
+            await DataStorage.Instance.LoadDataAsync();
 
             while (!ct.IsCancellationRequested)
             {
+                DateTime now = DateTime.Now;
+
+                // Начинаем с сегодняшних 9:00
+                DateTime nextRun = now.Date.AddHours(9);
+
+                // Пока это время в прошлом — добавляем день
+                while (now > nextRun)
+                    nextRun = nextRun.AddDays(1);
+
+                var delay = nextRun - now;
+
+                Console.WriteLine($"🕒 [{now:T}] Следующая проверка: {nextRun:dd.MM HH:mm}");
                 await Task.Delay(delay, ct);
                 if (ct.IsCancellationRequested) break;
 
@@ -170,137 +53,47 @@ namespace BirthdayBuddyLeftChat.Services
             }
         }
 
+        /// <summary>
+        /// Обновление сообщения
+        /// </summary>
+        /// <param name="botClient"></param>
+        /// <param name="sendMessage"></param>
+        /// <returns></returns>
         private async Task ProcessDailyEvents(ITelegramBotClient botClient, Func<long, string, Task> sendMessage)
         {
-            var today = DateTime.Today;
-
-            // Разблокировка
-            //var toUnrestrict = _restrictions.Where(r => r.UnrestrictDate <= today).ToList();
-            //foreach (var r in toUnrestrict)
-            //{
-            //    try
-            //    {
-            //        await botClient.RestrictChatMember(
-            //            chatId: r.User.ChatId,
-            //            userId: r.User.UserId,
-            //            permissions: new ChatPermissions
-            //            {
-            //                CanAddWebPagePreviews = true,
-            //                CanSendMessages = true,
-            //                CanSendOtherMessages = true,
-            //                CanChangeInfo = true,
-            //                CanInviteUsers = true,
-            //                CanManageTopics = true,
-            //                CanPinMessages = true,
-            //                CanSendAudios = true,
-            //                CanSendVideos = true,
-            //                CanSendDocuments = true,
-            //                CanSendPhotos = true,
-            //                CanSendPolls = true,
-            //                CanSendVideoNotes = true,
-            //                CanSendVoiceNotes = true
-            //            },
-            //            cancellationToken: default);
-
-            //        var user = _birthdays.FirstOrDefault(u => u.ChatId == r.User.ChatId && u.UserId == r.User.UserId);
-            //        if (user != null) user.IsActive = true;
-
-            //        _restrictions.Remove(r);
-            //        await sendMessage(r.User.ChatId, $"🎉 {user?.GetFullName()} снова может писать!");
-            //    }
-            //    catch (Exception ex)
-            //    {
-            //        Console.WriteLine($"Разблокировка: {ex.Message}");
-            //    }
-            //}
-            int daysAhead = 15;
-            // Дни рождения
-            var birthdays = GetBirthdaysWithDate(daysAhead);
-            //foreach (var p in birthdays)
-            //{
-            //    var until = today.AddDays(daysAhead);
-
-            //    try
-            //    {
-            //        if (p.Person!.UserId != 0)
-            //        {
-            //            await botClient.RestrictChatMember(
-            //            chatId: p.Person!.ChatId,
-            //            userId: p.Person.UserId,
-            //            permissions: new ChatPermissions
-            //            {
-            //                CanAddWebPagePreviews = false,
-            //                CanSendMessages = false,
-            //                CanSendOtherMessages = false,
-            //                CanChangeInfo = false,
-            //                CanInviteUsers = true,
-            //                CanManageTopics = false,
-            //                CanPinMessages = false,
-            //                CanSendAudios = false,
-            //                CanSendVideos = false,
-            //                CanSendDocuments = false,
-            //                CanSendPhotos = false,
-            //                CanSendPolls = false,
-            //                CanSendVideoNotes = false,
-            //                CanSendVoiceNotes = false
-            //            },
-            //            untilDate: DateTime.UtcNow.AddDays(3),
-            //            cancellationToken: default);
-
-            //            _restrictions.Add(new RestrictedUser
-            //            {
-            //                User = p.Person!,
-            //                UnrestrictDate = until
-            //            });
-            //            await sendMessage(p.Person.ChatId, $"🤫 {p.Person.Name} временно отключён.\n🎁 Готовим сюрприз!");
-            //        }
-            //        await sendMessage(p.Person!.ChatId, $"🤫 {p.Person.GetFullName()} скоро День Рождения.\n🎁 Готовим сюрприз!");
-            //    }
-            //    catch (Exception ex)
-            //    {
-            //        Console.WriteLine($"Ограничение: {ex.Message}");
-            //    }
-            //}
-
-            // Обновление шапки
-            var chatIds = _birthdays.Select(b => b.ChatId).Distinct();
-            foreach (var id in chatIds)
+            foreach (long id in DataStorage.Instance.ChatIds)
             {
                 try
                 {
-                    var text = GenerateUpcomingBirthdaysText(id, daysAhead);
-                    var msgId = PinnedMessageIds.GetValueOrDefault(id);
+                    string text = DataStorage.Instance.GenerateUpcomingBirthdaysText(id);
+                    var msgId = DataStorage.Instance.GetPinnedMsgId(id);
 
+                    if (DataStorage.Instance.IsNewBirthdaysList(id))
+                    {
+                        DataStorage.Instance.SaveBirthdaysList(id);
+
+                        if (msgId.HasValue)
+                        {
+                            await botClient.UnpinChatMessage(chatId: id, messageId: msgId.Value, cancellationToken: default);
+
+                            await botClient.DeleteMessage(chatId: id, messageId: msgId.Value, cancellationToken: default);
+
+                            var msg = await botClient.SendMessage(chatId: id, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
+
+                            DataStorage.Instance.SetPinnedMsgId(id, msg.MessageId);
+
+                            await botClient.PinChatMessage(chatId: id, messageId: msg.MessageId, disableNotification: true, cancellationToken: default);
+                        }
+                    }
+                    
                     if (msgId.HasValue)
                     {
-                        await botClient.EditMessageText(
-                            chatId: id,
-                            messageId: msgId.Value,
-                            text: text,
-                            parseMode: ParseMode.Markdown,
-                            cancellationToken: default);
-                    }
-                    else
-                    {
-                        var msg = await botClient.SendMessage(
-                            chatId: id,
-                            text: text,
-                            parseMode: ParseMode.Markdown,
-                            cancellationToken: default);
-
-                        PinnedMessageIds[id] = msg.MessageId;
-
-                        await botClient.PinChatMessage(
-                            chatId: id,
-                            messageId: msg.MessageId,
-                            disableNotification: true,
-                            cancellationToken: default);
+                        await botClient.EditMessageText(chatId: id, messageId: msgId.Value, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Шапка чата {id}: {ex.Message}");
-                    PinnedMessageIds[id] = null;
                 }
             }
         }
@@ -311,27 +104,25 @@ namespace BirthdayBuddyLeftChat.Services
             // Можно расширить: сохранять название чата, флаг активности и т.п.
         }
 
-        public void AddOrUpdateUser(long chatId, string firstName, DateTime birthDate, long userId = 0, string userName = "", string lastName = "", string patronymic = "", bool isActive = true)
+        public async Task ForceUpdatePinnedMessage(long chatId)
         {
-            UserBirthday user = new UserBirthday
+            try
             {
-                ChatId = chatId,
-                UserId = userId,
-                UserName = userName,
-                LastName = lastName,
-                FirstName = firstName,
-                Patronymic = patronymic,
-                BirthDate = birthDate,
-                IsActive = isActive
-            };
-            var existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserId == userId);
-            if (existing == null) existing = _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.GetFullName() == user.GetFullName());
+                string text = DataStorage.Instance.GenerateUpcomingBirthdaysText(chatId);
+                var msgId = DataStorage.Instance.GetPinnedMsgId(chatId);
 
-            if (existing == null)
+                if (msgId.HasValue)
+                {
+                    await BotClient.Instance.botClient!.EditMessageText(
+                        chatId: chatId,
+                        messageId: msgId.Value,
+                        text: text,
+                        parseMode: ParseMode.Markdown);
+                }
+            }
+            catch (Exception ex)
             {
-                _birthdays.Add(user);
-
-                _ = SaveDataAsync();
+                Console.WriteLine($"Ошибка обновления шапки в {chatId}: {ex.Message}");
             }
         }
     }

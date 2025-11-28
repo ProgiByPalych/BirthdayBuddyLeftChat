@@ -1,5 +1,4 @@
 ﻿using BirthdayBuddyLeftChat.Services;
-using SemenNewsBot;
 
 namespace BirthdayBuddyLeftChat
 {
@@ -16,9 +15,6 @@ namespace BirthdayBuddyLeftChat
                 e.Cancel = true;
                 cts.Cancel();
             };
-
-            // Загружаем данные
-            await BirthdayService.Instance.LoadDataAsync();
 
             // Запускаем бота
             var botTask = BotClient.Instance.StartAsync(cts.Token);

@@ -1,12 +1,13 @@
 ﻿using BirthdayBuddyLeftChat.Models;
 using BirthdayBuddyLeftChat.Services;
-using SemenNewsBot;
 using System.Globalization;
+using System.Text;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BirthdayBuddyLeftChat
 {
@@ -60,16 +61,16 @@ namespace BirthdayBuddyLeftChat
             User me = await _botClient!.GetMe(); // Создаем переменную, в которую помещаем информацию о нашем боте.
             Console.WriteLine($"{me.FirstName} запущен!");
 
-            // =============== Основной цикл — проверка RSS каждые 10 минут ===============
+            // =============== Основной цикл — каждые 10 минут ===============
             while (!cts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    //await SemenovNoblRu.Instance.SemenovNoblRuExecuter(_botClient);
+                    
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Ошибка в RSS-обработчике: {ex.Message}");
+                    Console.WriteLine($"Ошибка: {ex.Message}");
                 }
 
                 // Асинхронная задержка — не блокирует поток
@@ -91,36 +92,33 @@ namespace BirthdayBuddyLeftChat
 
                 if (update.Message is not { } message) return;
 
+                if (update.CallbackQuery is { } callback)
+                {
+                    await Instance.HandleCallbackAsync(bot, callback, ct);
+                    return;
+                }
+
                 var chatId = message.Chat.Id;
                 var text = message.Text;
                 var from = message.From!;
-
-                // Добавляем в базу, если ещё нет
-                //if(!from.IsBot)
-                //BirthdayService.Instance.AddOrUpdateUser(
-                //    chatId: chatId, 
-                //    firstName: string.IsNullOrEmpty(from.FirstName) ? "" : $"{from.FirstName}",
-                //    birthDate: DateTime.Now,
-                //    userId: from.Id,
-                //    userName: from.Username!,
-                //    lastName: from.LastName!
-                //    );
 
                 if (text?.StartsWith("/start") == true)
                 {
                     await bot.SendMessage(chatId,
                         "Привет! Я помогаю следить за днями рождениями.\n" +
                         "Команды:\n" +
-                        "/addbirthday ФИО@UserName,ДД.ММ.ГГГГ\n" +
-                        "ФИО@UserName2,ДД.ММ.ГГГГ . . . и т.д.\n" +
-                        "/list - вывести список именинников",
+                        "/add ФИО@UserName,ДД.ММ.ГГГГ\n" +
+                        "ФИО,ДД.ММ.ГГГГ (без UserName) и т.д.\n" +
+                        "/del ФИО\n" +
+                        "/list - вывести список именинников" +
+                        "/export — выгрузить CSV",
                         cancellationToken: ct);
                     return;
                 }
 
-                if (text?.StartsWith("/addbirthday") == true)
+                if (text?.StartsWith("/add") == true)
                 {
-                    string textMembers = text.Replace("/addbirthday", "").Trim();
+                    string textMembers = text.Replace("/add", "").Trim();
                     string[] members = textMembers.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
                     foreach (string item in members)
@@ -128,7 +126,7 @@ namespace BirthdayBuddyLeftChat
                         var parts = item.Split(',', StringSplitOptions.RemoveEmptyEntries);
                         if (parts.Length != 2)
                         {
-                            await bot.SendMessage(chatId, $"❌ Формат: /addbirthday ФИО@UserName,ДД.ММ.ГГГГ\n{item}", cancellationToken: ct);
+                            await bot.SendMessage(chatId, $"❌ Формат: /add ФИО,ДД.ММ.ГГГГ\n{item}", cancellationToken: ct);
                             continue;
                         }
 
@@ -147,8 +145,7 @@ namespace BirthdayBuddyLeftChat
                         // Если указан @username
                         if (nameOrUsername.Contains('@'))
                         {
-                            var userInChat = BirthdayService.Instance._birthdays
-                                .FirstOrDefault(b => b.ChatId == chatId && b.UserName.Equals(nameOrUsername.Split('@').Last(), StringComparison.OrdinalIgnoreCase));
+                            var userInChat = DataStorage.Instance.GetUserByUserName(chatId, nameOrUsername.Split('@').Last());
 
                             if (userInChat != null)
                             {
@@ -165,29 +162,161 @@ namespace BirthdayBuddyLeftChat
                         if (nameParts.Length == 2) { user.LastName = nameParts.First(); user.FirstName = nameParts.Last(); }
                         if (nameParts.Length >= 3) { user.LastName = nameParts[0]; user.FirstName = nameParts[1]; user.Patronymic = nameParts[2]; }
 
-                        BirthdayService.Instance.AddBirthday(user);
+                        DataStorage.Instance.AddBirthday(user);
 
                         await bot.SendMessage(chatId, $"✅ День рождения {user.GetFullName()} добавлен: {user.BirthDate:dd.MM.yyyy}", cancellationToken: ct);
                     }
-                    await BirthdayService.Instance.SaveDataAsync();
+                    await DataStorage.Instance.SaveBirthdayDataAsync();
                 }
 
                 if (text?.StartsWith("/list") == true)
                 {
                     string list = "";
-                    foreach (UserBirthday user in BirthdayService.Instance._birthdays)
+                    foreach (UserBirthday user in DataStorage.Instance.GetUsersByChatId(chatId))
                     {
                         if (user.ChatId == chatId)
-                            list += $"{user.GetFullName()} {user.BirthDate:dd.MM.yyyy} ({user.GetAge()})\n";
+                            list += $"{user.GetFullName()}\n{user.BirthDate:dd.MM.yyyy} ({user.GetAge()})\n";
                     }
                     
                     await bot.SendMessage(chatId, $"👥 Известные участники:\n{list}", cancellationToken: ct);
+                }
+
+                if (text?.StartsWith("/del") == true)
+                {
+                    string input = text.Replace("/del", "").Trim();
+
+                    if (string.IsNullOrWhiteSpace(input))
+                    {
+                        await bot.SendMessage(chatId, "❌ Укажите ФИО или @username для удаления.\nПример: `/del Иванов Иван` или `/del @ivan`", parseMode: ParseMode.Markdown, cancellationToken: ct);
+                        return;
+                    }
+
+                    // Поиск по username
+                    List<UserBirthday> candidates = new();
+
+                    if (input.StartsWith("@"))
+                    {
+                        string username = input.Substring(1);
+                        var user = DataStorage.Instance.GetUserByUserName(chatId, username);
+                        if (user != null) candidates.Add(user);
+                    }
+                    else
+                    {
+                        // Поиск по частичному совпадению ФИО (игнорируем регистр для удобства)
+                        candidates = DataStorage.Instance.GetUsersByChatId(chatId)
+                            .Where(u => !string.IsNullOrEmpty(u.GetFullName()) &&
+                                        u.GetFullName().IndexOf(input, StringComparison.OrdinalIgnoreCase) >= 0)
+                            .ToList();
+                    }
+
+                    if (!candidates.Any())
+                    {
+                        await bot.SendMessage(chatId, $"⚠️ Никто не найден по запросу: `{input}`", parseMode: ParseMode.Markdown, cancellationToken: ct);
+                        return;
+                    }
+
+                    if (candidates.Count == 1)
+                    {
+                        var user = candidates[0];
+                        string confirmText = $"Вы действительно хотите удалить?\n\n👤 {user.GetFullName()}\n📅 {user.BirthDate:dd.MM.yyyy}";
+
+                        var keyboard = new InlineKeyboardMarkup(new[]
+                        {
+                            new InlineKeyboardButton[] {
+                                InlineKeyboardButton.WithCallbackData("✅ Да, удалить", $"del_confirm:{chatId}:{user.BirthDate.Ticks}:{user.GetFullName()}"),
+                                InlineKeyboardButton.WithCallbackData("❌ Нет", "del_cancel")
+                            }
+                        });
+
+                        await bot.SendMessage(chatId, confirmText, replyMarkup: keyboard, cancellationToken: ct);
+                    }
+                    else
+                    {
+                        // Несколько совпадений — показываем список с кнопками выбора
+                        string msg = $"Найдено {candidates.Count} записей. Выберите, кого удалить:\n\n";
+                        var buttons = new List<InlineKeyboardButton>();
+
+                        foreach (var user in candidates.Take(10)) // Telegram ограничивает inline-кнопки ~100, но для UX — не более 10
+                        {
+                            string label = $"{user.GetFullName()} ({user.BirthDate:dd.MM})";
+                            string callbackData = $"del_select:{chatId}:{user.BirthDate.Ticks}:{user.GetFullName()}";
+                            buttons.Add(InlineKeyboardButton.WithCallbackData(label, callbackData));
+                        }
+
+                        var keyboard = new InlineKeyboardMarkup(buttons.Select(b => new[] { b }).ToArray());
+
+                        await bot.SendMessage(chatId, msg, replyMarkup: keyboard, cancellationToken: ct);
+                    }
+
+                    return;
+                }
+
+                if (text?.StartsWith("/export") == true)
+                {
+                    var birthdays = DataStorage.Instance.GetUsersByChatId(chatId);
+
+                    if (!birthdays.Any())
+                    {
+                        await bot.SendMessage(chatId, "📭 В этом чате ещё нет дней рождений.", cancellationToken: ct);
+                        return;
+                    }
+
+                    // Генерируем CSV-контент
+                    var csvLines = new List<string>
+                    {
+                        "Фамилия;Имя;Отчество;Дата рождения;Username;UserId"
+                    };
+
+                    foreach (var user in birthdays)
+                    {
+                        string line = $"{EscapeCsv(user.LastName)};" +
+                                      $"{EscapeCsv(user.FirstName)};" +
+                                      $"{EscapeCsv(user.Patronymic)};" +
+                                      $"{user.BirthDate:dd.MM.yyyy};" +
+                                      $"{EscapeCsv(user.UserName)};" +
+                                      $"{user.UserId}";
+                        csvLines.Add(line);
+                    }
+
+                    string csvContent = string.Join("\n", csvLines);
+                    byte[] csvBytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csvContent)).ToArray();
+
+                    // Создаём временный файл
+                    string tempFileName = $"birthdays_{chatId}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+                    string tempPath = Path.Combine(Path.GetTempPath(), tempFileName);
+
+                    try
+                    {
+                        await File.WriteAllBytesAsync(tempPath, csvBytes, ct);
+
+                        using var stream = File.OpenRead(tempPath);
+                        await bot.SendDocument(
+                            chatId: chatId,
+                            document: new InputFileStream(stream, tempFileName),
+                            caption: $"📄 Экспорт дней рождений ({birthdays.Count} записей)",
+                            cancellationToken: ct);
+                    }
+                    finally
+                    {
+                        if (File.Exists(tempPath))
+                            File.Delete(tempPath);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Ошибка в UpdateHandler: {ex.Message}");
             }
+        }
+
+        private static string EscapeCsv(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            if (value.Contains('"') || value.Contains(';') || value.Contains('\n') || value.Contains('\r'))
+            {
+                return $"\"{value.Replace("\"", "\"\"")}\"";
+            }
+            return value;
         }
 
         private Task HandlePollingError(ITelegramBotClient botClient, Exception exception, CancellationToken ct)
@@ -243,9 +372,10 @@ namespace BirthdayBuddyLeftChat
                     text: "🎉 Спасибо, что добавили меня как администратора!\n" +
                           "Теперь я могу помогать отслеживать дни рождения.\n\n" +
                           "📌 Я создам закреплённое сообщение с предстоящими ДР.\n" +
-                          "👥 Через пару минут соберу список участников.\n\n" +
                           "Команды:\n" +
-                          "/addbirthday — добавить день рождения\n" +
+                          "/add — добавить день рождения\n" +
+                          "/del — удалить день рождения\n" +
+                          "/list — вывести список именинников" +
                           "/export — выгрузить CSV",
                     cancellationToken: ct);
 
@@ -256,6 +386,121 @@ namespace BirthdayBuddyLeftChat
             {
                 Console.WriteLine($"❌ Бот был удалён из чата: {chat.Title} (ID: {chat.Id})");
                 // Можно по желанию очистить данные или оставить
+            }
+        }
+
+        private async Task HandleCallbackAsync(ITelegramBotClient bot, CallbackQuery callback, CancellationToken ct)
+        {
+            var chatId = callback.Message?.Chat.Id ?? 0;
+            var fromId = callback.From.Id;
+            var data = callback.Data;
+
+            try
+            {
+                if (data == "del_cancel")
+                {
+                    await bot.EditMessageText(
+                        chatId: chatId,
+                        messageId: callback.Message.MessageId,
+                        text: "❌ Удаление отменено.",
+                        cancellationToken: ct);
+                    return;
+                }
+
+                if (data.StartsWith("del_select:"))
+                {
+                    // Формат: del_select:chatId:ticks:fullName
+                    var parts = data.Split(':', 4);
+                    if (parts.Length != 4) throw new FormatException("Неверный формат данных");
+
+                    long targetChatId = long.Parse(parts[1]);
+                    long ticks = long.Parse(parts[2]);
+                    string fullName = parts[3];
+
+                    var birthDate = new DateTime(ticks);
+                    var user = DataStorage.Instance.Birthdays
+                        .FirstOrDefault(u => u.ChatId == targetChatId &&
+                                             u.BirthDate.Ticks == ticks &&
+                                             u.GetFullName() == fullName);
+
+                    if (user == null)
+                    {
+                        await bot.AnswerCallbackQuery(callback.Id, "Запись не найдена.", cancellationToken: ct);
+                        return;
+                    }
+
+                    string confirmText = $"Вы действительно хотите удалить?\n\n👤 {user.GetFullName()}\n📅 {user.BirthDate:dd.MM.yyyy}";
+
+                    var keyboard = new InlineKeyboardMarkup(new[]
+                    {
+                new InlineKeyboardButton[] {
+                    InlineKeyboardButton.WithCallbackData("✅ Да, удалить", $"del_confirm:{targetChatId}:{ticks}:{fullName}"),
+                    InlineKeyboardButton.WithCallbackData("❌ Нет", "del_cancel")
+                }
+            });
+
+                    await bot.EditMessageText(
+                        chatId: chatId,
+                        messageId: callback.Message.MessageId,
+                        text: confirmText,
+                        replyMarkup: keyboard,
+                        cancellationToken: ct);
+
+                    return;
+                }
+
+                if (data.StartsWith("del_confirm:"))
+                {
+                    var parts = data.Split(':', 4);
+                    if (parts.Length != 4) throw new FormatException("Неверный формат данных");
+
+                    long targetChatId = long.Parse(parts[1]);
+                    long ticks = long.Parse(parts[2]);
+                    string fullName = parts[3];
+
+                    var user = DataStorage.Instance.Birthdays
+                        .FirstOrDefault(u => u.ChatId == targetChatId &&
+                                             u.BirthDate.Ticks == ticks &&
+                                             u.GetFullName() == fullName);
+
+                    if (user == null)
+                    {
+                        await bot.EditMessageText(
+                            chatId: chatId,
+                            messageId: callback.Message.MessageId,
+                            text: "❌ Запись уже удалена или не найдена.",
+                            cancellationToken: ct);
+                        return;
+                    }
+
+                    DataStorage.Instance.Birthdays.Remove(user);
+                    await DataStorage.Instance.SaveBirthdayDataAsync();
+
+                    await bot.EditMessageText(
+                        chatId: chatId,
+                        messageId: callback.Message.MessageId,
+                        text: $"✅ Удалено: {user.GetFullName()}",
+                        cancellationToken: ct);
+
+                    // Опционально: обновить закреплённое сообщение сразу
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await BirthdayService.Instance.ForceUpdatePinnedMessage(targetChatId);
+                        }
+                        catch { /* ignore */ }
+                    });
+
+                    return;
+                }
+
+                await bot.AnswerCallbackQuery(callback.Id, "Неизвестная команда.", cancellationToken: ct);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка в HandleCallbackAsync: {ex}");
+                await bot.AnswerCallbackQuery(callback.Id, "Ошибка обработки.", cancellationToken: ct);
             }
         }
     }

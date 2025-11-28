@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
 
-namespace SemenNewsBot
+namespace BirthdayBuddyLeftChat
 {
     /// <summary>
     /// Глобальные настройки

@@ -71,5 +71,46 @@
 
             return string.Join(" ", parts);
         }
+
+        #region Equality Members
+
+        public override bool Equals(object? obj)
+        {
+            return Equals(obj as UserBirthday);
+        }
+
+        public bool Equals(UserBirthday? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            return string.Equals(LastName, other.LastName, StringComparison.Ordinal) &&
+                   string.Equals(FirstName, other.FirstName, StringComparison.Ordinal) &&
+                   string.Equals(Patronymic, other.Patronymic, StringComparison.Ordinal) &&
+                   BirthDate.Date == other.BirthDate.Date; // Сравниваем только дату, без времени
+        }
+
+        public override int GetHashCode()
+        {
+            // Используем HashCode.Combine (доступен начиная с .NET Core 2.1 / .NET Standard 2.1)
+            return HashCode.Combine(
+                LastName?.ToLowerInvariant(),
+                FirstName?.ToLowerInvariant(),
+                Patronymic?.ToLowerInvariant(),
+                BirthDate.Date
+            );
+        }
+
+        public static bool operator ==(UserBirthday? left, UserBirthday? right)
+        {
+            return Equals(left, right);
+        }
+
+        public static bool operator !=(UserBirthday? left, UserBirthday? right)
+        {
+            return !Equals(left, right);
+        }
+
+        #endregion
     }
 }

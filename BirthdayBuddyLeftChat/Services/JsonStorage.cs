@@ -9,6 +9,7 @@ namespace BirthdayBuddyLeftChat.Services
     {
         private readonly string _birthdaysPath = "data/birthdays.json";
         private readonly string _restrictionsPath = "data/restrictions.json";
+        private readonly string _pinnedMessagesPath = "data/pinnedMessages.json";
 
         public JsonStorage()
         {
