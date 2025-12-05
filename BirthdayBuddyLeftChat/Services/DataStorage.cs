@@ -79,7 +79,7 @@ namespace BirthdayBuddyLeftChat.Services
                     if (lastDigit == 1) year = "год";
                     else if (lastDigit > 1 && lastDigit < 5) year = "года";
                     else year = "лет";
-                    return $"{b.GetFullName()}\n{next:dd.MM} ({(daysLeft == 0 ? "сегодня" : $"{daysLeft} дн.")}), {age} {year}.";
+                    return $"{b.GetFullName()}\n{next:dd.MM} ({(daysLeft == 0 ? "сегодня" : (daysLeft == 1 ? "завтра" : $"{daysLeft} дн."))}), {age} {year}.";
                 })
                 .ToList();
 
