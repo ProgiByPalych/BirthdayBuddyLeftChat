@@ -11,7 +11,9 @@ namespace BirthdayBuddyLeftChat.Services
             get
             {
                 if (_instance == null)
+                {
                     _instance = new DataStorage();
+                }
                 return _instance;
             }
         }
@@ -49,9 +51,9 @@ namespace BirthdayBuddyLeftChat.Services
         public string GenerateUpcomingBirthdaysText(long chatId, int daysAhead = 15)
         {
             if (_currentListFutureBirthDay == null) _currentListFutureBirthDay = new();
-            else if (!_currentListFutureBirthDay.ContainsKey(chatId)) _currentListFutureBirthDay.Add(chatId, new());
             else _currentListFutureBirthDay[chatId].Clear();
-
+            if (!_currentListFutureBirthDay.ContainsKey(chatId)) _currentListFutureBirthDay.Add(chatId, new());
+            
             var today = DateTime.Today;
             // Получим все дни рождения для текущего чата и отсортируем.
             var birthdaysInChat = Instance.GetUsersByChatId(chatId);
@@ -139,11 +141,11 @@ namespace BirthdayBuddyLeftChat.Services
             _birthdays = new List<UserBirthday>(_birthdays.OrderBy(b => (b.BirthDate.Month - 1) * 31 + b.BirthDate.Day).ToList());
         }
 
-        public async Task LoadDataAsync()
+        public void LoadDataAsync()
         {
-            _birthdays = await _storage.LoadBirthdays();
+            _birthdays = _storage.LoadBirthdays();
             SortBirthday();
-            _restrictions = await _storage.LoadRestrictions();
+            //_restrictions = await _storage.LoadRestrictions();
         }
 
         public async Task SaveBirthdayDataAsync()

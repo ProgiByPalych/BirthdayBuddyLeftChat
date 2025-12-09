@@ -43,8 +43,8 @@ namespace BirthdayBuddyLeftChat.Services
         }
 
         // Удобные методы
-        public Task<List<UserBirthday>> LoadBirthdays() =>
-            LoadAsync<UserBirthday>(_birthdaysPath);
+        public List<UserBirthday> LoadBirthdays() =>
+            LoadAsync<UserBirthday>(_birthdaysPath).Result;
 
         public Task SaveBirthdays(List<UserBirthday> data) =>
             SaveAsync(_birthdaysPath, data);

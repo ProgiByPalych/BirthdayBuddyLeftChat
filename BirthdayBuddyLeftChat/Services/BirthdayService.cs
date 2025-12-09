@@ -18,9 +18,6 @@ namespace BirthdayBuddyLeftChat.Services
 
         public async Task StartDailyCheck(Func<long, string, Task> sendMessage, ITelegramBotClient botClient, CancellationToken ct)
         {
-            // Загружаем данные
-            await DataStorage.Instance.LoadDataAsync();
-
             while (!ct.IsCancellationRequested)
             {
                 DateTime now = DateTime.Now;
@@ -68,12 +65,12 @@ namespace BirthdayBuddyLeftChat.Services
                     string text = DataStorage.Instance.GenerateUpcomingBirthdaysText(id);
                     var msgId = DataStorage.Instance.GetPinnedMsgId(id);
 
-                    if (DataStorage.Instance.IsNewBirthdaysList(id))
+                    if (msgId.HasValue)
                     {
-                        DataStorage.Instance.SaveBirthdaysList(id);
-
-                        if (msgId.HasValue)
+                        if (DataStorage.Instance.IsNewBirthdaysList(id))
                         {
+                            DataStorage.Instance.SaveBirthdaysList(id);
+
                             await botClient.UnpinChatMessage(chatId: id, messageId: msgId.Value, cancellationToken: default);
 
                             await botClient.DeleteMessage(chatId: id, messageId: msgId.Value, cancellationToken: default);
@@ -84,11 +81,16 @@ namespace BirthdayBuddyLeftChat.Services
 
                             await botClient.PinChatMessage(chatId: id, messageId: msg.MessageId, disableNotification: true, cancellationToken: default);
                         }
+                        else
+                            await botClient.EditMessageText(chatId: id, messageId: msgId.Value, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
                     }
-                    
-                    if (msgId.HasValue)
+                    else
                     {
-                        await botClient.EditMessageText(chatId: id, messageId: msgId.Value, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
+                        var msg = await botClient.SendMessage(chatId: id, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
+
+                        DataStorage.Instance.SetPinnedMsgId(id, msg.MessageId);
+
+                        await botClient.PinChatMessage(chatId: id, messageId: msg.MessageId, disableNotification: true, cancellationToken: default);
                     }
                 }
                 catch (Exception ex)

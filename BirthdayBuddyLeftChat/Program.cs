@@ -8,6 +8,8 @@ namespace BirthdayBuddyLeftChat
         {
             // Инициализируем настройки
             Settings.Init();
+            // Загружаем данные
+            DataStorage.Instance.LoadDataAsync();
 
             var cts = new CancellationTokenSource();
             Console.CancelKeyPress += (s, e) =>
