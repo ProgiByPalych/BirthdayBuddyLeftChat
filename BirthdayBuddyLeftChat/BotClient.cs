@@ -131,6 +131,7 @@ namespace BirthdayBuddyLeftChat
                         break;
                     case UpdateType.Message:
                         if (update.Message is not { } message) break;
+                        if (message.PinnedMessage != null) break;
                         try
                         {
                             chatId = message.Chat.Id;

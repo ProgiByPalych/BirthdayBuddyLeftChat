@@ -51,9 +51,9 @@ namespace BirthdayBuddyLeftChat.Services
         public string GenerateUpcomingBirthdaysText(long chatId, int daysAhead = 15)
         {
             if (_currentListFutureBirthDay == null) _currentListFutureBirthDay = new();
+            else if (!_currentListFutureBirthDay.ContainsKey(chatId)) _currentListFutureBirthDay.Add(chatId, new());
             else _currentListFutureBirthDay[chatId].Clear();
-            if (!_currentListFutureBirthDay.ContainsKey(chatId)) _currentListFutureBirthDay.Add(chatId, new());
-            
+
             var today = DateTime.Today;
             // Получим все дни рождения для текущего чата и отсортируем.
             var birthdaysInChat = Instance.GetUsersByChatId(chatId);
