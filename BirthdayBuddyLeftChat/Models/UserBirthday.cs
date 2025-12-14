@@ -6,6 +6,10 @@
     public class UserBirthday
     {
         /// <summary>
+        /// Идентификатор в базе данных бота в формате Base64
+        /// </summary>
+        public string IdBase64 { get; set; } = "";
+        /// <summary>
         /// Принадлежит чату
         /// </summary>
         public long ChatId { get; set; }
@@ -38,9 +42,36 @@
         /// </summary>
         public bool IsActive { get; set; } = true;
         /// <summary>
+        /// Идентификатор в базе данных бота в формате Guid
+        /// </summary>
+        public Guid Id { get { return new Guid(Convert.FromBase64String(IdBase64)); } set { IdBase64 = Convert.ToBase64String(value.ToByteArray()); } }
+        /// <summary>
+        /// Идентификатор в базе данных бота в URL-безопасном формате Guid
+        /// </summary>
+        public string UrlSafeId
+        {
+            get
+            {
+                return IdBase64.TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            }
+            set
+            {
+                string standard = value.Replace('-', '+').Replace('_', '/');
+
+                // Добавляем паддинг
+                switch (standard.Length % 4)
+                {
+                    case 2: standard += "=="; break;
+                    case 3: standard += "="; break;
+                }
+
+                IdBase64 = standard;
+            }
+        }
+        /// <summary>
         /// Вычислить возраст
         /// </summary>
-        /// <returns>Количество исполняющихся лет</returns>
+        /// <returns>Количество лет</returns>
         public int GetAge()
         {
             DateTime today = DateTime.Today;
@@ -51,6 +82,11 @@
             }
             return age;
         }
+        /// <summary>
+        /// Вычислить сколько лет исполнится
+        /// </summary>
+        /// <returns>Количество исполняющихся лет</returns>
+        public int GetFutureAge() => DateTime.Today.Year - BirthDate.Year;
         /// <summary>
         /// Получить ФИО. Возвращает строку, содержащую фамилию, имя и отчество в правильном порядке.
         /// Пропускает отсутствующие части и избегает лишних пробелов.

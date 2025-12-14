@@ -31,7 +31,7 @@ namespace BirthdayBuddyLeftChat.Services
 
                 var delay = nextRun - now;
 
-                Console.WriteLine($"🕒 [{now:T}] Следующая проверка: {nextRun:dd.MM HH:mm}");
+                Console.WriteLine($"[{now:T}] Следующая проверка: {nextRun:dd.MM HH:mm}");
                 await Task.Delay(delay, ct);
                 if (ct.IsCancellationRequested) break;
 
@@ -67,9 +67,9 @@ namespace BirthdayBuddyLeftChat.Services
 
                     if (msgId.HasValue)
                     {
-                        if (DataStorage.Instance.IsNewBirthdaysList(id))
+                        if (DataStorage.Instance.IsNewBirthdaysList(chatId))
                         {
-                            DataStorage.Instance.SaveBirthdaysList(id);
+                            DataStorage.Instance.SaveBirthdaysList(chatId);
 
                             await botClient.UnpinChatMessage(chatId: chatId, messageId: msgId.Value, cancellationToken: default);
 
@@ -82,15 +82,15 @@ namespace BirthdayBuddyLeftChat.Services
                             await botClient.PinChatMessage(chatId: chatId, messageId: msg.MessageId, disableNotification: true, cancellationToken: default);
                         }
                         else
-                            await botClient.EditMessageText(chatId: id, messageId: msgId.Value, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
+                            await botClient.EditMessageText(chatId: chatId, messageId: msgId.Value, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
                     }
                     else
                     {
-                        var msg = await botClient.SendMessage(chatId: id, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
+                        var msg = await botClient.SendMessage(chatId: chatId, text: text, parseMode: ParseMode.Markdown, cancellationToken: default);
 
-                        DataStorage.Instance.SetPinnedMsgId(id, msg.MessageId);
+                        DataStorage.Instance.SetPinnedMsgId(chatId, msg.MessageId);
 
-                        await botClient.PinChatMessage(chatId: id, messageId: msg.MessageId, disableNotification: true, cancellationToken: default);
+                        await botClient.PinChatMessage(chatId: chatId, messageId: msg.MessageId, disableNotification: true, cancellationToken: default);
                     }
                 }
                 catch (Exception ex)

@@ -110,6 +110,11 @@ namespace BirthdayBuddyLeftChat.Services
             return _birthdays.FirstOrDefault(b => b.ChatId == chatId && b.UserName.Equals(userName, StringComparison.OrdinalIgnoreCase));
         }
 
+        public UserBirthday? GetUserByUrlSafeId(string urlSafeId)
+        {
+            return _birthdays.FirstOrDefault(b => b.UrlSafeId == urlSafeId);
+        }
+
         public void AddBirthday(UserBirthday user)
         {
             if (user.UserId != 0)
@@ -145,6 +150,10 @@ namespace BirthdayBuddyLeftChat.Services
         {
             _birthdays = _storage.LoadBirthdays();
             SortBirthday();
+            foreach (UserBirthday user in _birthdays)
+            {
+                if (user.IdBase64 == string.Empty) user.Id = GuidGenerator.GuidRandom();
+            }
             //_restrictions = await _storage.LoadRestrictions();
         }
 
