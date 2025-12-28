@@ -48,6 +48,7 @@ namespace BirthdayBuddyLeftChat
                         "ФИО,ДД.ММ.ГГГГ (без UserName) и т.д.\n" +
                         "/edit ФИО@UserName,ДД.ММ.ГГГГ\n" +
                         "/del ФИО\n" +
+                        "/sync - Синхронизировать username.\n" +
                         "/clear - Очистить список именинников.\n" +
                         "/list - Вывести список именинников.\n" +
                         "/export — Выгрузить CSV.";
@@ -131,7 +132,8 @@ namespace BirthdayBuddyLeftChat
                         break;
                     case UpdateType.Message:
                         if (update.Message is not { } message) break;
-                        if (message.PinnedMessage != null) break;
+                        //if (message.PinnedMessage != null) break;
+                        if (message.Text?.StartsWith("/") == false) break;
                         try
                         {
                             chatId = message.Chat.Id;
@@ -144,6 +146,7 @@ namespace BirthdayBuddyLeftChat
                             int delay;
                             string mesg = "";
                             string[]? parts;
+                            List<UserBirthday> candidates;
 
                             // Берём только первую строку
                             string firstLine = message.Text?.Split('\n', '\r').FirstOrDefault()?.Trim() ?? "";
@@ -155,18 +158,37 @@ namespace BirthdayBuddyLeftChat
                                 cmd = match.Groups[1].Value;
                                 data = message.Text?.Replace($"/{cmd}", "").Trim();
                             }
-                            else
-                            {
-                                msg = await bot.SendMessage(chatId, $"❌ Это не команда.", cancellationToken: ct);
-                                return;
-                            }
+                            //else
+                            //{
+                            //    msg = await bot.SendMessage(chatId, $"❌ Это не команда.", cancellationToken: ct);
+                            //    _ = Task.Run(async () =>
+                            //    {
+                            //        try
+                            //        {
+                            //            await Task.Delay(15_000, ct);
+                            //            await bot.DeleteMessage(
+                            //                chatId: chatId,
+                            //                messageId: msg.MessageId,
+                            //                cancellationToken: ct);
+                            //            await Task.Delay(1_000, ct);
+                            //            await bot.DeleteMessage(
+                            //                chatId: chatId,
+                            //                messageId: message.MessageId,
+                            //                cancellationToken: ct);
+                            //        }
+                            //        catch { /* ignore */ }
+                            //    });
+                            //    return;
+                            //}
 
                             switch (cmd)
                             {
                                 case "start":
                                     msg = await bot.SendMessage(
                                         chatId: chatId,
-                                        text: $"Привет! Я помогаю следить за днями рождениями.\n{_instance?._stringCMD}",
+                                        text: $"Привет! Я помогаю следить за днями рождениями.\n{_instance?._stringCMD}\n\n" +
+                                        "Для того чтобы бот имел возможность исключать человека из этого чата на время выбора ему подарка (15 дней)," +
+                                        " а затем его автоматически добавлять - нужно каждому пользователю выполнить команду /sync",
                                         cancellationToken: ct);
 
                                     _ = Task.Run(async () =>
@@ -303,7 +325,7 @@ namespace BirthdayBuddyLeftChat
 
                                         msg = await bot.SendMessage(
                                             chatId: chatId,
-                                            text: $"👥 Известные участники:\n{list}\n(исполнится лет)",
+                                            text: $"👥 Известные участники:\n{list}\n(исполняется в этом году)",
                                             cancellationToken: ct);
                                         delay = 300_000;
                                     }
@@ -337,7 +359,7 @@ namespace BirthdayBuddyLeftChat
                                     else
                                     {
                                         // Поиск по username
-                                        List<UserBirthday> candidates = new();
+                                        candidates = new();
 
                                         if (input.StartsWith("@"))
                                         {
@@ -379,7 +401,7 @@ namespace BirthdayBuddyLeftChat
                                             mesg = $"Найдено записей: {candidates.Count}. Выберите, кого удалить:\n\n";
                                             var buttons = new List<InlineKeyboardButton>();
 
-                                            foreach (UserBirthday userItem in candidates.Take(9)) // Telegram ограничивает inline-кнопки ~100, но для UX — не более 10
+                                            foreach (UserBirthday userItem in candidates.Take(20)) // Telegram ограничивает inline-кнопки ~100, но для UX — не более 10
                                             {
                                                 string label = $"{userItem.GetFullName()} ({userItem.BirthDate:dd.MM.yyyy})";
                                                 string callbackData = $"del_confirm:{userItem.UrlSafeId} {message.MessageId}";
@@ -584,8 +606,101 @@ namespace BirthdayBuddyLeftChat
                                         catch { /* ignore */ }
                                     });
                                     break;
+                                case "sync":
+                                    msg = null;
+                                    string resultPattern = message.From.FirstName;
+                                    // Поиск
+                                    candidates = DataStorage.Instance.GetUsersByChatId(chatId)
+                                            .Where(u => !string.IsNullOrEmpty(u.GetFullName()) && u.GetFullName().ToLower().Contains(resultPattern.ToLower()))
+                                            .ToList();
+
+                                    if (candidates.Count == 0)
+                                    {
+                                        string inputPattern = Transliterator.ToCyrillic(message.From.FirstName);
+                                        resultPattern = inputPattern.Length >= 2 ? inputPattern.Substring(0, 2) : inputPattern;
+                                        candidates = DataStorage.Instance.GetUsersByChatId(chatId)
+                                            .Where(u => !string.IsNullOrEmpty(u.GetFullName()) && u.GetFullName().ToLower().Contains(resultPattern.ToLower()))
+                                            .ToList();
+                                    }
+                                    if (candidates.Count == 0)
+                                    {
+                                        msg = await bot.SendMessage(chatId, $"⚠️ Никто не найден по запросу: `{resultPattern}`", parseMode: ParseMode.Markdown, cancellationToken: ct);
+                                    }
+                                    else if (candidates.Count == 1)
+                                    {
+                                        user = candidates[0];
+                                        confirmText = $"Синхронизировать\n👤 {user.GetFullName()}\n📅 {user.BirthDate:dd.MM.yyyy}\nи\n👤 {message.From.Username} ?";
+
+                                        keyboard = new InlineKeyboardMarkup(new[]
+                                        {
+                                            new InlineKeyboardButton[]
+                                            {
+                                                InlineKeyboardButton.WithCallbackData("✅ Да, давай", $"sync_confirm:{user.UrlSafeId} {message.MessageId} {message.From.Username} {message.From.Id}"),
+                                                InlineKeyboardButton.WithCallbackData("❌ Нет", $"cancel:{message.MessageId}")
+                                            }
+                                        });
+
+                                        await bot.SendMessage(chatId, confirmText, replyMarkup: keyboard, cancellationToken: ct);
+                                    }
+                                    else
+                                    {
+                                        // Несколько совпадений — показываем список с кнопками выбора
+                                        mesg = $"Найдено записей: {candidates.Count}. Выберите, с кем синхронизировать:\n\n";
+                                        var buttons = new List<InlineKeyboardButton>();
+
+                                        foreach (UserBirthday userItem in candidates.Take(20)) // Telegram ограничивает inline-кнопки ~100, но для UX — не более 10
+                                        {
+                                            string label = $"{userItem.GetFullName()} ({userItem.BirthDate:dd.MM.yyyy})";
+                                            string callbackData = $"sync_confirm:{userItem.UrlSafeId} {message.MessageId} {message.From.Username} {message.From.Id}";
+                                            buttons.Add(InlineKeyboardButton.WithCallbackData(label, callbackData));
+                                        }
+                                        buttons.Add(InlineKeyboardButton.WithCallbackData("❌ Отмена", $"cancel:{message.MessageId}"));
+
+                                        keyboard = new InlineKeyboardMarkup(buttons.Select(b => new[] { b }).ToArray());
+
+                                        await bot.SendMessage(chatId, mesg, replyMarkup: keyboard, cancellationToken: ct);
+                                    }
+
+                                    if (msg != null)
+                                    {
+                                        _ = Task.Run(async () =>
+                                        {
+                                            try
+                                            {
+                                                await Task.Delay(5_000, ct);
+                                                await bot.DeleteMessage(
+                                                    chatId: chatId,
+                                                    messageId: msg.MessageId,
+                                                    cancellationToken: ct);
+                                                await Task.Delay(1_000, ct);
+                                                await bot.DeleteMessage(
+                                                    chatId: chatId,
+                                                    messageId: message.MessageId,
+                                                    cancellationToken: ct);
+                                            }
+                                            catch { /* ignore */ }
+                                        });
+                                    }
+                                    break;
                                 default:
-                                    await bot.SendMessage(chatId, $"❌ Команда не найдена.", cancellationToken: ct);
+                                    //msg = await bot.SendMessage(chatId, $"❌ Команда не найдена.", cancellationToken: ct);
+                                    //_ = Task.Run(async () =>
+                                    //{
+                                    //    try
+                                    //    {
+                                    //        await Task.Delay(15_000, ct);
+                                    //        await bot.DeleteMessage(
+                                    //            chatId: chatId,
+                                    //            messageId: msg.MessageId,
+                                    //            cancellationToken: ct);
+                                    //        await Task.Delay(1_000, ct);
+                                    //        await bot.DeleteMessage(
+                                    //            chatId: chatId,
+                                    //            messageId: message.MessageId,
+                                    //            cancellationToken: ct);
+                                    //    }
+                                    //    catch { /* ignore */ }
+                                    //});
                                     break;
                             }
                         }
@@ -604,16 +719,17 @@ namespace BirthdayBuddyLeftChat
                         {
                             chatId = callbackQuery.Message?.Chat.Id ?? 0;
                             var fromId = callbackQuery.From.Id;
-                            string btn = callbackQuery.Data.Split(':').First();
+                            string btn = callbackQuery.Data!.Split(':').First();
                             string data = callbackQuery.Data.Replace($"{btn}:", "").Trim();
                             Message msg;
+                            string[] members;
 
                             switch (btn)
                             {
                                 case "cancel":
                                     await bot.EditMessageText(
                                         chatId: chatId,
-                                        messageId: callbackQuery.Message.MessageId,
+                                        messageId: callbackQuery.Message!.MessageId,
                                         text: "❌ Действие отменено.",
                                         cancellationToken: ct);
 
@@ -636,14 +752,14 @@ namespace BirthdayBuddyLeftChat
                                     });
                                     break;
                                 case "del_confirm":
-                                    string[] members = data.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                    members = data.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                                     user = DataStorage.Instance.GetUserByUrlSafeId(members[0]);
 
                                     if (user == null)
                                     {
                                         await bot.EditMessageText(
                                             chatId: chatId,
-                                            messageId: callbackQuery.Message.MessageId,
+                                            messageId: callbackQuery.Message!.MessageId,
                                             text: "❌ Запись уже удалена или не найдена.",
                                             cancellationToken: ct);
                                         return;
@@ -654,7 +770,7 @@ namespace BirthdayBuddyLeftChat
 
                                     await bot.EditMessageText(
                                         chatId: chatId,
-                                        messageId: callbackQuery.Message.MessageId,
+                                        messageId: callbackQuery.Message!.MessageId,
                                         text: $"✅ Удалено: {user.GetFullName()}",
                                         cancellationToken: ct);
 
@@ -684,7 +800,7 @@ namespace BirthdayBuddyLeftChat
                                     {
                                         await bot.EditMessageText(
                                             chatId: chatId,
-                                            messageId: callbackQuery.Message.MessageId,
+                                            messageId: callbackQuery.Message!.MessageId,
                                             text: $"👥 У Вас пока нет ни одной записи.",
                                             cancellationToken: ct);
                                     }
@@ -698,7 +814,7 @@ namespace BirthdayBuddyLeftChat
 
                                         await bot.EditMessageText(
                                            chatId: chatId,
-                                           messageId: callbackQuery.Message.MessageId,
+                                           messageId: callbackQuery.Message!.MessageId,
                                            text: $"👥 Все именинники удалены!.",
                                            cancellationToken: ct);
                                     }
@@ -721,8 +837,52 @@ namespace BirthdayBuddyLeftChat
                                         catch { /* ignore */ }
                                     });
                                     break;
+                                case "sync_confirm":
+                                    members = data.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                    user = DataStorage.Instance.GetUserByUrlSafeId(members[0]);
+
+                                    if (user == null)
+                                    {
+                                        await bot.EditMessageText(
+                                            chatId: chatId,
+                                            messageId: callbackQuery.Message!.MessageId,
+                                            text: "❌ Не смог синхронизировать...",
+                                            cancellationToken: ct);
+                                        return;
+                                    }
+
+                                    user.UserName = members[2];
+                                    user.UserId = long.Parse(members[3]);
+                                    await DataStorage.Instance.SaveBirthdayDataAsync();
+
+                                    await bot.EditMessageText(
+                                        chatId: chatId,
+                                        messageId: callbackQuery.Message!.MessageId,
+                                        text: $"✅ Синхронизирован: {user.GetFullName()}",
+                                        cancellationToken: ct);
+
+                                    // Опционально: обновить закреплённое сообщение сразу
+                                    _ = Task.Run(async () =>
+                                    {
+                                        try
+                                        {
+                                            await BirthdayService.Instance.ForceUpdatePinnedMessage(chatId);
+                                            await Task.Delay(10_000, ct);
+                                            await bot.DeleteMessage(
+                                                chatId: chatId,
+                                                messageId: callbackQuery.Message.MessageId,
+                                                cancellationToken: ct);
+                                            await Task.Delay(1_000, ct);
+                                            await bot.DeleteMessage(
+                                                chatId: chatId,
+                                                messageId: int.Parse(members[1]),
+                                                cancellationToken: ct);
+                                        }
+                                        catch { /* ignore */ }
+                                    });
+                                    break;
                                 default:
-                                    await bot.AnswerCallbackQuery(callbackQuery.Id, "Неизвестная команда.", cancellationToken: ct);
+                                    await bot.AnswerCallbackQuery(callbackQuery.Id, "Неизвестный Callback.", cancellationToken: ct);
                                     break;
                             }
                         }

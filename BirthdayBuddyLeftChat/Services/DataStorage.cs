@@ -54,7 +54,7 @@ namespace BirthdayBuddyLeftChat.Services
             else if (!_currentListFutureBirthDay.ContainsKey(chatId)) _currentListFutureBirthDay.Add(chatId, new());
             else _currentListFutureBirthDay[chatId].Clear();
 
-            var today = DateTime.Today;
+            DateTime today = DateTime.Today;
             // Получим все дни рождения для текущего чата и отсортируем.
             var birthdaysInChat = Instance.GetUsersByChatId(chatId);
 
@@ -95,7 +95,7 @@ namespace BirthdayBuddyLeftChat.Services
             }
 
             lines.Add("———");
-            lines.Add("_Обновлено автоматически_");
+            lines.Add($"_Обновлено {today:dd.MM} автоматически_");
 
             return string.Join("\n", lines);
         }
